@@ -1,0 +1,406 @@
+[
+    {
+        "question": "What is natural language processing (NLP)?",
+        "expected_output": "Natural language processing is a subfield of artificial intelligence that focuses on enabling computers to understand, process, and generate human language."
+    },
+    {
+        "question": "What is the goal of NLP research?",
+        "expected_output": "The goal of NLP research is to develop models and algorithms that allow machines to understand, interpret, and generate natural language for various applications."
+    },
+    {
+        "question": "What are the three main parts of the NLP book?",
+        "expected_output": "The book is divided into three parts: foundations of machine learning and neural networks, basic neural models for NLP, and large language models."
+    },
+    {
+        "question": "What topics are covered in the foundations of machine learning section?",
+        "expected_output": "This section introduces mathematical basics, machine learning concepts, and neural network fundamentals needed for understanding NLP models."
+    },
+    {
+        "question": "What are some mathematical foundations used in NLP?",
+        "expected_output": "Mathematical foundations for NLP include linear algebra, probability theory, and statistics."
+    },
+    {
+        "question": "What is a text classifier?",
+        "expected_output": "A text classifier is a machine learning model that assigns predefined categories or labels to text documents based on their content."
+    },
+    {
+        "question": "How are documents represented in machine learning models?",
+        "expected_output": "Documents are typically represented as feature vectors derived from text, such as bag-of-words or other numerical representations."
+    },
+    {
+        "question": "What is the difference between generative and discriminative models?",
+        "expected_output": "Generative models model the joint probability distribution of data and labels, while discriminative models directly learn the conditional probability of labels given the data."
+    },
+    {
+        "question": "What are OOV words in NLP?",
+        "expected_output": "OOV words are out-of-vocabulary words that do not appear in the model’s training vocabulary."
+    },
+    {
+        "question": "What is overfitting in machine learning?",
+        "expected_output": "Overfitting occurs when a model learns the training data too well and fails to generalize to unseen data."
+    },
+    {
+        "question": "What is underfitting?",
+        "expected_output": "Underfitting occurs when a model is too simple to capture the underlying patterns in the data."
+    },
+    {
+        "question": "What is model evaluation in machine learning?",
+        "expected_output": "Model evaluation measures how well a trained model performs using metrics and validation techniques."
+    },
+    {
+        "question": "What are training, validation, and test datasets?",
+        "expected_output": "Training data is used to learn model parameters, validation data is used for model selection, and test data is used for final evaluation."
+    },
+    {
+        "question": "What are common NLP tasks?",
+        "expected_output": "Common NLP tasks include classification, sequence labeling, language modeling, sequence generation, and information extraction."
+    },
+    {
+        "question": "What is sequence labeling?",
+        "expected_output": "Sequence labeling assigns labels to each element in a sequence such as tagging parts of speech in a sentence."
+    },
+    {
+        "question": "What is language modeling?",
+        "expected_output": "Language modeling predicts the probability of a sequence of words or the next word given previous words."
+    },
+    {
+        "question": "What is a neural network?",
+        "expected_output": "A neural network is a computational model composed of layers of interconnected nodes that learn representations from data."
+    },
+    {
+        "question": "What is a multi-layer neural network?",
+        "expected_output": "A multi-layer neural network contains multiple hidden layers between input and output layers to learn complex patterns."
+    },
+    {
+        "question": "What is a computation graph?",
+        "expected_output": "A computation graph represents the sequence of operations used to compute outputs and gradients in a neural network."
+    },
+    {
+        "question": "What is gradient descent?",
+        "expected_output": "Gradient descent is an optimization algorithm used to minimize the loss function by updating model parameters in the direction of negative gradients."
+    },
+    {
+        "question": "What is batching in neural network training?",
+        "expected_output": "Batching refers to processing training data in small groups called batches to improve training efficiency."
+    },
+    {
+        "question": "What is parameter initialization?",
+        "expected_output": "Parameter initialization is the process of setting initial values for neural network weights before training."
+    },
+    {
+        "question": "What is regularization in neural networks?",
+        "expected_output": "Regularization techniques help prevent overfitting by adding constraints or noise during training."
+    },
+    {
+        "question": "What is dropout?",
+        "expected_output": "Dropout is a regularization method that randomly disables neurons during training to improve generalization."
+    },
+    {
+        "question": "What is an autoencoder?",
+        "expected_output": "An autoencoder is a neural network used for unsupervised learning that learns to reconstruct its input."
+    },
+    {
+        "question": "What are word embeddings?",
+        "expected_output": "Word embeddings are dense vector representations of words that capture semantic relationships between them."
+    },
+    {
+        "question": "What is one-hot representation?",
+        "expected_output": "One-hot representation encodes a word as a vector where only one position is set to one and all others are zero."
+    },
+    {
+        "question": "What is TF-IDF?",
+        "expected_output": "TF-IDF is a statistical measure that evaluates the importance of a word in a document relative to a collection of documents."
+    },
+    {
+        "question": "What is Word2Vec?",
+        "expected_output": "Word2Vec is a neural embedding model that learns word representations by predicting context words."
+    },
+    {
+        "question": "What is GloVe?",
+        "expected_output": "GloVe is a word embedding model that learns vector representations from global word co-occurrence statistics."
+    },
+    {
+        "question": "What is a recurrent neural network?",
+        "expected_output": "A recurrent neural network processes sequential data by maintaining hidden states that capture information from previous inputs."
+    },
+    {
+        "question": "What is an LSTM?",
+        "expected_output": "Long Short-Term Memory is a type of recurrent neural network designed to capture long-term dependencies in sequences."
+    },
+    {
+        "question": "What is a GRU?",
+        "expected_output": "A Gated Recurrent Unit is a simplified recurrent neural network architecture that uses gating mechanisms to control information flow."
+    },
+    {
+        "question": "What is a convolutional neural network in NLP?",
+        "expected_output": "A convolutional neural network applies convolution operations to capture local patterns in text sequences."
+    },
+    {
+        "question": "What is a sequence-to-sequence model?",
+        "expected_output": "A sequence-to-sequence model maps an input sequence to an output sequence using an encoder-decoder architecture."
+    },
+    {
+        "question": "What is the attention mechanism?",
+        "expected_output": "Attention allows a model to focus on relevant parts of the input sequence when generating each output token."
+    },
+    {
+        "question": "What is the Transformer architecture?",
+        "expected_output": "The Transformer is a neural architecture that relies on self-attention mechanisms instead of recurrence to process sequences."
+    },
+    {
+        "question": "What is self-attention?",
+        "expected_output": "Self-attention allows each token in a sequence to attend to all other tokens when computing representations."
+    },
+    {
+        "question": "What is a large language model?",
+        "expected_output": "A large language model is a neural network trained on massive text data to understand and generate human language."
+    },
+    {
+        "question": "What is pretraining in NLP?",
+        "expected_output": "Pretraining involves training a model on large-scale data before fine-tuning it on specific tasks."
+    },
+    {
+        "question": "What is prompt engineering?",
+        "expected_output": "Prompt engineering is the practice of designing prompts to guide large language models to produce desired outputs."
+    },
+    {
+        "question": "What is Natural Language Processing (NLP)?",
+        "expected_output": "Natural Language Processing (NLP) is a subfield of artificial intelligence that focuses on enabling computers to understand, interpret, generate, and interact with human language."
+    },
+    {
+        "question": "What are the two main goals of natural language processing?",
+        "expected_output": "The two main goals of NLP are natural language understanding, which focuses on interpreting human language, and natural language generation, which focuses on producing human-like text."
+    },
+    {
+        "question": "What is the role of neural networks in modern NLP?",
+        "expected_output": "Neural networks are widely used in modern NLP to model complex linguistic patterns and learn representations from large amounts of data for tasks such as translation, summarization, and question answering."
+    },
+    {
+        "question": "What is a language model in NLP?",
+        "expected_output": "A language model is a model that estimates the probability distribution of sequences of words, allowing it to predict the likelihood of a sentence or the next word in a sequence."
+    },
+    {
+        "question": "What is the purpose of pretraining in large language models?",
+        "expected_output": "Pretraining allows a model to learn general linguistic patterns from massive datasets before being fine-tuned for specific downstream tasks."
+    },
+    {
+        "question": "What is fine-tuning in NLP models?",
+        "expected_output": "Fine-tuning is the process of adapting a pretrained model to a specific task using a smaller labeled dataset."
+    },
+    {
+        "question": "What is tokenization in natural language processing?",
+        "expected_output": "Tokenization is the process of splitting text into smaller units called tokens, which can be words, subwords, or characters."
+    },
+    {
+        "question": "What is word embedding?",
+        "expected_output": "Word embedding is a technique that represents words as dense vectors in a continuous vector space where semantically similar words are located closer together."
+    },
+    {
+        "question": "What is the difference between symbolic NLP and neural NLP?",
+        "expected_output": "Symbolic NLP relies on hand-crafted rules and linguistic knowledge, while neural NLP uses machine learning models such as neural networks to automatically learn patterns from data."
+    },
+    {
+        "question": "What is machine translation?",
+        "expected_output": "Machine translation is the task of automatically translating text from one natural language into another using computational models."
+    },
+    {
+        "question": "What is sentiment analysis?",
+        "expected_output": "Sentiment analysis is the task of identifying and extracting subjective information from text, such as opinions, emotions, or attitudes."
+    },
+    {
+        "question": "What is named entity recognition (NER)?",
+        "expected_output": "Named entity recognition is the task of identifying and classifying named entities in text, such as people, organizations, locations, and dates."
+    },
+    {
+        "question": "What is syntactic parsing?",
+        "expected_output": "Syntactic parsing is the process of analyzing the grammatical structure of a sentence to determine relationships between words."
+    },
+    {
+        "question": "What is dependency parsing?",
+        "expected_output": "Dependency parsing is a syntactic analysis method that represents grammatical relationships between words as directed links in a dependency tree."
+    },
+    {
+        "question": "What is a recurrent neural network (RNN)?",
+        "expected_output": "A recurrent neural network is a type of neural network designed for sequential data, where the output from previous steps is used as input for the current step."
+    },
+    {
+        "question": "What is the main limitation of traditional RNNs?",
+        "expected_output": "Traditional RNNs suffer from vanishing and exploding gradient problems, which make it difficult to learn long-term dependencies."
+    },
+    {
+        "question": "What is an LSTM network?",
+        "expected_output": "Long Short-Term Memory (LSTM) is a type of recurrent neural network designed to better capture long-term dependencies using memory cells and gating mechanisms."
+    },
+    {
+        "question": "What is a GRU in neural networks?",
+        "expected_output": "A Gated Recurrent Unit (GRU) is a simplified recurrent neural network architecture that uses gating mechanisms to control information flow and capture long-term dependencies."
+    },
+    {
+        "question": "What is the attention mechanism in NLP?",
+        "expected_output": "The attention mechanism allows a model to focus on relevant parts of the input sequence when generating outputs, improving performance in tasks like translation and summarization."
+    },
+    {
+        "question": "What is the Transformer architecture?",
+        "expected_output": "The Transformer is a neural network architecture based entirely on attention mechanisms, enabling parallel processing of sequences and improved modeling of long-range dependencies."
+    },
+    {
+        "question": "What is self-attention?",
+        "expected_output": "Self-attention is a mechanism that allows a model to compute relationships between different words within the same sequence."
+    },
+    {
+        "question": "What is a large language model (LLM)?",
+        "expected_output": "A large language model is a deep neural network trained on massive text datasets to understand and generate natural language across many tasks."
+    },
+    {
+        "question": "Why are large datasets important for training language models?",
+        "expected_output": "Large datasets provide diverse linguistic patterns and contexts, allowing language models to learn richer representations and generalize better."
+    },
+    {
+        "question": "What is text classification?",
+        "expected_output": "Text classification is the task of assigning predefined categories or labels to a piece of text."
+    },
+    {
+        "question": "What is question answering in NLP?",
+        "expected_output": "Question answering is the task of automatically answering questions posed in natural language using information from text or knowledge sources."
+    },
+    {
+        "question": "What is text summarization?",
+        "expected_output": "Text summarization is the process of generating a shorter version of a document while preserving its key information."
+    },
+    {
+        "question": "What is the difference between extractive and abstractive summarization?",
+        "expected_output": "Extractive summarization selects important sentences directly from the original text, while abstractive summarization generates new sentences that capture the main ideas."
+    },
+    {
+        "question": "What is a corpus in NLP?",
+        "expected_output": "A corpus is a large structured collection of text used for linguistic analysis and training NLP models."
+    },
+    {
+        "question": "What is the purpose of evaluation metrics in NLP tasks?",
+        "expected_output": "Evaluation metrics are used to measure the performance of NLP models on specific tasks such as translation, classification, or summarization."
+    },
+    {
+        "question": "What is BLEU score used for?",
+        "expected_output": "BLEU score is an evaluation metric commonly used to measure the quality of machine translation by comparing generated translations with reference translations."
+    },
+    {
+        "question": "What is perplexity in language models?",
+        "expected_output": "Perplexity is a metric used to evaluate language models that measures how well a probability model predicts a sample."
+    },
+    {
+        "question": "What is transfer learning in NLP?",
+        "expected_output": "Transfer learning involves leveraging knowledge learned from one task or dataset to improve performance on another related task."
+    },
+    {
+        "question": "What is prompt-based learning?",
+        "expected_output": "Prompt-based learning guides a pretrained language model to perform tasks by providing natural language instructions or prompts."
+    },
+    {
+        "question": "What is instruction tuning?",
+        "expected_output": "Instruction tuning is the process of training language models on datasets of instructions and responses so they can better follow human instructions."
+    },
+    {
+        "question": "What is the benefit of foundation models in NLP?",
+        "expected_output": "Foundation models provide a general-purpose base that can be adapted to many different tasks with minimal additional training."
+    },
+    {
+        "question": "What is semantic similarity in NLP?",
+        "expected_output": "Semantic similarity measures how similar two pieces of text are in meaning rather than exact wording."
+    },
+    {
+        "question": "What is the goal of representation learning in NLP?",
+        "expected_output": "Representation learning aims to automatically learn useful features or embeddings from raw text data."
+    },
+    {
+        "question": "What is contextual embedding?",
+        "expected_output": "Contextual embedding represents words differently depending on the context in which they appear within a sentence."
+    },
+    {
+        "question": "What is a downstream NLP task?",
+        "expected_output": "A downstream task is a specific application such as translation, classification, or summarization that uses representations learned by pretrained models."
+    },
+    {
+        "question": "Why do large language models benefit from subword tokenization instead of word-level tokenization?",
+        "expected_output": "Subword tokenization helps large language models handle rare words, misspellings, and morphological variations by splitting words into smaller meaningful units. This reduces vocabulary size while still allowing the model to represent previously unseen words by combining known subword pieces."
+    },
+    {
+        "question": "How does the attention mechanism help neural networks capture long-range dependencies in text?",
+        "expected_output": "The attention mechanism allows a model to directly compute relationships between all tokens in a sequence, regardless of their distance. This enables the model to focus on relevant words when generating representations, making it easier to capture long-range dependencies compared to traditional sequential models like RNNs."
+    },
+    {
+        "question": "Why are transformers more efficient to train than recurrent neural networks on large datasets?",
+        "expected_output": "Transformers are more efficient because they process tokens in parallel rather than sequentially like recurrent neural networks. This parallelization allows better utilization of modern hardware such as GPUs and TPUs and significantly speeds up training on large datasets."
+    },
+    {
+        "question": "What problem does positional encoding solve in transformer models?",
+        "expected_output": "Positional encoding provides information about the order of tokens in a sequence because the transformer architecture itself does not process inputs sequentially. By adding positional information to token embeddings, the model can learn relationships based on word positions."
+    },
+    {
+        "question": "Why is pretraining on large corpora important before fine-tuning language models for downstream tasks?",
+        "expected_output": "Pretraining allows language models to learn general linguistic knowledge, grammar patterns, and semantic relationships from massive unlabeled text. This knowledge can then be adapted through fine-tuning to perform well on specific downstream tasks even with relatively small labeled datasets."
+    },
+    {
+        "question": "What is the difference between generative language models and discriminative NLP models?",
+        "expected_output": "Generative language models learn the probability distribution of text and can generate new sequences of words, while discriminative models focus on predicting labels or outputs given input text. Generative models can perform tasks like text generation and completion, whereas discriminative models are commonly used for classification tasks."
+    },
+    {
+        "question": "Why can traditional n-gram language models struggle with data sparsity?",
+        "expected_output": "Traditional n-gram models rely on counting occurrences of fixed-length word sequences in a dataset. As the sequence length increases, many possible combinations may never appear in the training data, leading to sparse statistics and poor generalization."
+    },
+    {
+        "question": "How do contextual embeddings differ from static word embeddings such as Word2Vec?",
+        "expected_output": "Static embeddings assign a single fixed vector representation to each word regardless of context. Contextual embeddings generate different representations for the same word depending on the surrounding words in the sentence, allowing them to capture polysemy and contextual meaning."
+    },
+    {
+        "question": "Why is evaluation of NLP systems often task-specific rather than using a single universal metric?",
+        "expected_output": "Different NLP tasks require different evaluation criteria because their objectives vary. For example, machine translation focuses on translation quality, classification focuses on accuracy or F1 score, and language modeling uses perplexity. No single metric can capture performance across all tasks."
+    },
+    {
+        "question": "What role does large-scale unsupervised learning play in modern NLP systems?",
+        "expected_output": "Large-scale unsupervised learning allows models to learn patterns and structures from massive amounts of unlabeled text. This approach reduces the reliance on manually labeled datasets and enables models to develop general-purpose language representations."
+    },
+    {
+        "question": "Why can language models sometimes generate fluent but factually incorrect information?",
+        "expected_output": "Language models are trained to predict likely word sequences rather than verify factual correctness. As a result, they may generate text that is linguistically coherent but not grounded in verified facts or external knowledge."
+    },
+    {
+        "question": "How does retrieval-augmented generation improve the reliability of language models?",
+        "expected_output": "Retrieval-augmented generation combines language models with external information retrieval systems. By retrieving relevant documents at inference time and conditioning the generation on that information, the model can produce responses that are more factual and grounded."
+    },
+    {
+        "question": "What challenges arise when training language models on very large text corpora?",
+        "expected_output": "Training on massive corpora introduces challenges such as high computational cost, large memory requirements, noisy or low-quality data, and potential biases present in the training data."
+    },
+    {
+        "question": "Why is data preprocessing important in natural language processing pipelines?",
+        "expected_output": "Data preprocessing ensures that text data is cleaned, normalized, and properly structured before being used for model training. Steps such as tokenization, normalization, and removing noise help improve model performance and stability."
+    },
+    {
+        "question": "How can ambiguity in natural language make NLP tasks difficult?",
+        "expected_output": "Natural language contains lexical ambiguity, syntactic ambiguity, and contextual ambiguity, meaning that the same sentence or word can have multiple interpretations. NLP systems must rely on context and learned patterns to resolve these ambiguities."
+    },
+    {
+        "question": "What is the difference between syntactic understanding and semantic understanding in NLP?",
+        "expected_output": "Syntactic understanding focuses on the grammatical structure of sentences, such as how words relate through syntax. Semantic understanding focuses on the meaning conveyed by the sentence and the relationships between concepts."
+    },
+    {
+        "question": "Why is generalization an important property of machine learning models in NLP?",
+        "expected_output": "Generalization ensures that a model performs well on unseen data rather than simply memorizing patterns from the training dataset. Good generalization allows NLP systems to handle new sentences and contexts effectively."
+    },
+    {
+        "question": "How can long documents create challenges for transformer-based language models?",
+        "expected_output": "Standard transformers have quadratic computational complexity with respect to sequence length because each token attends to every other token. This makes processing very long documents computationally expensive and memory intensive."
+    },
+    {
+        "question": "What is the purpose of regularization techniques in training neural NLP models?",
+        "expected_output": "Regularization techniques such as dropout or weight decay help prevent overfitting by encouraging the model to learn more robust patterns rather than memorizing training data."
+    },
+    {
+        "question": "Why is alignment between training objectives and downstream tasks important for language models?",
+        "expected_output": "If the training objective does not reflect the requirements of downstream tasks, the learned representations may not transfer effectively. Aligning objectives ensures the model learns features that are useful for real-world applications."
+    },
+    {
+        "question": "Why is evaluating retrieval quality critical in retrieval-augmented generation systems?",
+        "expected_output": "In retrieval-augmented generation systems, the language model depends on retrieved documents as evidence. If the retrieval step fails to provide relevant context, the generation step may produce incorrect or hallucinated answers."
+    }
+]
