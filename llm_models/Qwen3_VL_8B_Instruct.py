@@ -1,7 +1,5 @@
 import sys
 import codecs
-sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
-sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
 
 from threading import Thread
 from transformers import Qwen3VLForConditionalGeneration, AutoProcessor, AutoTokenizer, BitsAndBytesConfig, TextIteratorStreamer

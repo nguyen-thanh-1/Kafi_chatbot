@@ -4,9 +4,12 @@ import faiss
 import fitz
 import torch
 import numpy as np
+import shutil
 from typing import List
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
+import uvicorn
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
@@ -25,8 +28,8 @@ EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 RERANKER_MODEL = "BAAI/bge-reranker-base"
 LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
 
-CHUNK_SIZE = 1000
-OVERLAP = 150
+CHUNK_SIZE = 400
+OVERLAP = 50
 BATCH_SIZE = 64
 TOP_K_RETRIEVE = 8
 TOP_K_RERANK = 3
@@ -49,10 +52,8 @@ def extract_text_from_pdf(path):
 # CHUNKING
 # =========================
 
-tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL)
-
 def chunk_text(text):
-    tokens = tokenizer.encode(text)
+    tokens = tokenizer.encode(text, add_special_tokens=False, truncation=False)
     chunks = []
 
     start = 0
@@ -69,8 +70,6 @@ def chunk_text(text):
 # EMBEDDING + INDEX
 # =========================
 
-embed_model = SentenceTransformer(EMBEDDING_MODEL, device=device)
-
 def embed_chunks(chunks):
     return embed_model.encode(
         chunks,
@@ -81,7 +80,7 @@ def embed_chunks(chunks):
 
 def build_index(embeddings):
     dim = embeddings.shape[1]
-    nlist = 100
+    nlist = min(100, max(1, len(embeddings) // 39)) if len(embeddings) > 0 else 1
 
     quantizer = faiss.IndexFlatIP(dim)
     index = faiss.IndexIVFFlat(
@@ -93,7 +92,7 @@ def build_index(embeddings):
 
     index.train(embeddings)
     index.add(embeddings)
-    index.nprobe = 10
+    index.nprobe = min(10, nlist)
     return index
 
 
@@ -101,41 +100,21 @@ def build_index(embeddings):
 # RERANKER
 # =========================
 
-reranker = CrossEncoder(RERANKER_MODEL, device=device)
-
 def rerank(query, candidates):
     pairs = [[query, c] for c in candidates]
     scores = reranker.predict(pairs)
-    ranked = sorted(zip(candidates, scores),
-                    key=lambda x: x[1],
-                    reverse=True)
+    ranked = sorted(zip(candidates, scores), key=lambda x: x[1], reverse=True)
     return [x[0] for x in ranked[:TOP_K_RERANK]]
 
 
 # =========================
-# LLM
+# LLM (Mistral)
 # =========================
-
-llm_tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
-
-llm_model = AutoModelForCausalLM.from_pretrained(
-    LLM_MODEL,
-    torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-    device_map="auto"
-)
-
-generator = pipeline(
-    "text-generation",
-    model=llm_model,
-    tokenizer=llm_tokenizer
-)
-
 
 def generate_answer(query, contexts):
     context_text = "\n\n".join(contexts)
 
-    prompt = f"""
-You are an expert academic assistant.
+    prompt = f"""You are an expert academic assistant.
 Use ONLY the provided context.
 
 Context:
@@ -154,7 +133,6 @@ Answer:
     )
 
     full_text = output[0]["generated_text"]
-    # Chỉ lấy phần answer, bỏ phần prompt
     if "Answer:" in full_text:
         return full_text.split("Answer:")[-1].strip()
     return full_text.strip()
@@ -167,34 +145,56 @@ Answer:
 query_cache = {}
 
 # =========================
-# BUILD OR LOAD SYSTEM
+# GLOBALS & LIFESPAN
 # =========================
 
-if os.path.exists(INDEX_PATH):
+index = None
+chunks = []
+tokenizer = None
+embed_model = None
+reranker = None
+llm_tokenizer = None
+llm_model = None
+generator = None
 
-    print("Loading existing index...")
-    index = faiss.read_index(INDEX_PATH)
-    with open(META_PATH, "r", encoding="utf-8") as f:
-        chunks = json.load(f)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global index, chunks, tokenizer, embed_model, reranker, llm_tokenizer, llm_model, generator
 
-else:
+    print("Loading models (Embedding, Reranker, LLM)...")
+    tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL)
+    embed_model = SentenceTransformer(EMBEDDING_MODEL, device=device)
+    reranker = CrossEncoder(RERANKER_MODEL, device=device)
 
-    print("Building new index...")
-    text = extract_text_from_pdf(PDF_PATH)
-    chunks = chunk_text(text)
-    embeddings = embed_chunks(chunks)
+    llm_tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
+    llm_model = AutoModelForCausalLM.from_pretrained(
+        LLM_MODEL,
+        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+        device_map="auto"
+    )
+    generator = pipeline(
+        "text-generation",
+        model=llm_model,
+        tokenizer=llm_tokenizer
+    )
 
-    index = build_index(embeddings)
-
-    faiss.write_index(index, INDEX_PATH)
-    with open(META_PATH, "w", encoding="utf-8") as f:
-        json.dump(chunks, f)
+    if os.path.exists(INDEX_PATH):
+        print("Loading existing index...")
+        index = faiss.read_index(INDEX_PATH)
+        with open(META_PATH, "r", encoding="utf-8") as f:
+            chunks = json.load(f)
+    else:
+        print("No existing index found. Ready for upload.")
+    yield
 
 # =========================
 # RETRIEVAL
 # =========================
 
 def retrieve(query):
+    if not index or not chunks:
+        return []
+
     if query in query_cache:
         return query_cache[query]
 
@@ -205,28 +205,54 @@ def retrieve(query):
     )
 
     D, I = index.search(query_embedding, TOP_K_RETRIEVE)
-    candidates = [chunks[i] for i in I[0]]
+    candidates = [chunks[i] for i in I[0] if i < len(chunks)]
 
-    top_contexts = rerank(query, candidates)
-
-    query_cache[query] = top_contexts
-    return top_contexts
+    contexts = rerank(query, candidates)
+    query_cache[query] = contexts
+    return contexts
 
 
 # =========================
 # FASTAPI SERVER
 # =========================
 
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
+
+@app.post("/upload")
+def upload_file(file: UploadFile = File(...)):
+    global index, chunks
+    try:
+        with open(PDF_PATH, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        print("Building new index...")
+        text = extract_text_from_pdf(PDF_PATH)
+        new_chunks = chunk_text(text)
+        embeddings = embed_chunks(new_chunks)
+
+        new_index = build_index(embeddings)
+
+        faiss.write_index(new_index, INDEX_PATH)
+        with open(META_PATH, "w", encoding="utf-8") as f:
+            json.dump(new_chunks, f)
+
+        chunks = new_chunks
+        index = new_index
+        return {
+            "message": f"File '{file.filename}' uploaded and processed successfully. Index updated.",
+            "chunks_count": len(chunks)
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 class QueryRequest(BaseModel):
     question: str
 
-
 @app.post("/ask")
 def ask(req: QueryRequest):
-
     contexts = retrieve(req.question)
     answer = generate_answer(req.question, contexts)
-
     return {"answer": answer}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

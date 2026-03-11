@@ -1,27 +1,27 @@
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+
 import sys
 import json
+import logging
 import faiss
 import fitz
 import torch
 import numpy as np
+import shutil
 from typing import List
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
+import uvicorn
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from transformers import AutoTokenizer
 
+logging.getLogger("transformers").setLevel(logging.ERROR)
+
 sys.path.append(r"C:\Users\Admin\Desktop\Special_Subject_AI\llm_models")
 from Qwen3_VL_8B_Instruct import QwenVLChat
-
-# Initialize QwenVLChat globally (or in a lazy-load pattern to save memory if needed)
-# However, we'll initialize it here directly like the existing models.
-qwen_vl = None
-
-def init_qwen():
-    global qwen_vl
-    if qwen_vl is None:
-        qwen_vl = QwenVLChat()
 
 # =========================
 # CONFIG
@@ -33,8 +33,8 @@ META_PATH = "chunks.json"
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 RERANKER_MODEL = "BAAI/bge-reranker-base"
 
-CHUNK_SIZE = 1000
-OVERLAP = 150
+CHUNK_SIZE = 400
+OVERLAP = 50
 BATCH_SIZE = 64
 TOP_K_RETRIEVE = 8
 TOP_K_RERANK = 3
@@ -56,10 +56,8 @@ def extract_text_from_pdf(path):
 # CHUNKING
 # =========================
 
-tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL)
-
 def chunk_text(text):
-    tokens = tokenizer.encode(text)
+    tokens = tokenizer.encode(text, add_special_tokens=False, truncation=False)
     chunks = []
 
     start = 0
@@ -74,8 +72,6 @@ def chunk_text(text):
 # =========================
 # EMBEDDING + INDEX
 # =========================
-
-embed_model = SentenceTransformer(EMBEDDING_MODEL, device=device)
 
 def embed_chunks(chunks):
     return embed_model.encode(
@@ -106,14 +102,10 @@ def build_index(embeddings):
 # RERANKER
 # =========================
 
-reranker = CrossEncoder(RERANKER_MODEL, device=device)
-
 def rerank(query, candidates):
     pairs = [[query, c] for c in candidates]
     scores = reranker.predict(pairs)
-    ranked = sorted(zip(candidates, scores),
-                    key=lambda x: x[1],
-                    reverse=True)
+    ranked = sorted(zip(candidates, scores), key=lambda x: x[1], reverse=True)
     return [x[0] for x in ranked[:TOP_K_RERANK]]
 
 # =========================
@@ -121,23 +113,17 @@ def rerank(query, candidates):
 # =========================
 
 def generate_answer(query, contexts):
-    init_qwen()
     context_text = "\n\n".join(contexts)
 
-    user_input = f"Dựa vào thông tin ngữ cảnh sau:\n{context_text}\n\nHãy trả lời câu hỏi một cách chính xác: {query}"
-    
-    # Reset chat to avoid context leaking between requests
+    user_input = f"Dua vao thong tin ngu canh sau:\n{context_text}\n\nHay tra loi cau hoi mot cach chinh xac: {query}"
+
     qwen_vl.reset_chat()
-    
-    # Run the chat generation (this function is synchronous because it waits for the loop)
-    # We intercept STDOUT natively in the class, but we can just get history later
     qwen_vl.chat_stream(user_input)
-    
-    # Retrieve the assistant's latest response from history
+
     latest_msg = qwen_vl.history[-1]
     if latest_msg["role"] == "assistant":
         return latest_msg["content"][0]["text"].strip()
-    
+
     return ""
 
 # =========================
@@ -147,30 +133,36 @@ def generate_answer(query, contexts):
 query_cache = {}
 
 # =========================
-# BUILD OR LOAD SYSTEM
+# GLOBALS & LIFESPAN
 # =========================
 
-if os.path.exists(INDEX_PATH):
-    print("Loading existing index...")
-    index = faiss.read_index(INDEX_PATH)
-    with open(META_PATH, "r", encoding="utf-8") as f:
-        chunks = json.load(f)
-else:
-    print("Building new index...")
-    if os.path.exists(PDF_PATH):
-        text = extract_text_from_pdf(PDF_PATH)
-        chunks = chunk_text(text)
-        embeddings = embed_chunks(chunks)
+index = None
+chunks = []
+tokenizer = None
+embed_model = None
+reranker = None
+qwen_vl = None
 
-        index = build_index(embeddings)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global index, chunks, tokenizer, embed_model, reranker, qwen_vl
 
-        faiss.write_index(index, INDEX_PATH)
-        with open(META_PATH, "w", encoding="utf-8") as f:
-            json.dump(chunks, f)
+    print("Loading models (Embedding, Reranker, Qwen VL)...")
+    tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL)
+    embed_model = SentenceTransformer(EMBEDDING_MODEL, device=device)
+    reranker = CrossEncoder(RERANKER_MODEL, device=device)
+
+    # Eagerly load Qwen VL model on startup
+    qwen_vl = QwenVLChat()
+
+    if os.path.exists(INDEX_PATH):
+        print("Loading existing index...")
+        index = faiss.read_index(INDEX_PATH)
+        with open(META_PATH, "r", encoding="utf-8") as f:
+            chunks = json.load(f)
     else:
-        print(f"File {PDF_PATH} does not exist.")
-        chunks = []
-        index = None
+        print("No existing index found. Ready for upload.")
+    yield
 
 # =========================
 # RETRIEVAL
@@ -192,16 +184,42 @@ def retrieve(query):
     D, I = index.search(query_embedding, TOP_K_RETRIEVE)
     candidates = [chunks[i] for i in I[0] if i < len(chunks)]
 
-    top_contexts = rerank(query, candidates)
-
-    query_cache[query] = top_contexts
-    return top_contexts
+    contexts = rerank(query, candidates)
+    query_cache[query] = contexts
+    return contexts
 
 # =========================
 # FASTAPI SERVER
 # =========================
 
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
+
+@app.post("/upload")
+def upload_file(file: UploadFile = File(...)):
+    global index, chunks
+    try:
+        with open(PDF_PATH, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        print("Building new index...")
+        text = extract_text_from_pdf(PDF_PATH)
+        new_chunks = chunk_text(text)
+        embeddings = embed_chunks(new_chunks)
+
+        new_index = build_index(embeddings)
+
+        faiss.write_index(new_index, INDEX_PATH)
+        with open(META_PATH, "w", encoding="utf-8") as f:
+            json.dump(new_chunks, f)
+
+        chunks = new_chunks
+        index = new_index
+        return {
+            "message": f"File '{file.filename}' uploaded and processed successfully. Index updated.",
+            "chunks_count": len(chunks)
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 class QueryRequest(BaseModel):
     question: str
@@ -211,3 +229,6 @@ def ask(req: QueryRequest):
     contexts = retrieve(req.question)
     answer = generate_answer(req.question, contexts)
     return {"answer": answer}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
