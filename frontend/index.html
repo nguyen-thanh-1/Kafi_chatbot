@@ -1,63 +1,481 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gold Market Insights</title>
+    <title>Thanh Trading AI | Dashboard</title>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
+            --bg-dark: #0A0E14;
+            --surface: #161B22;
+            --surface-hover: #1C2128;
+            --accent-buy: #10B981;
+            --accent-sell: #EF4444;
+            --text-primary: #E6EDF3;
+            --text-secondary: #8B949E;
+            --border: #30363D;
             --gold: #D4AF37;
-            --dark-bg: #0A0A0A;
-            --card-bg: #1A1A1A;
-            --text: #E0E0E0;
         }
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--dark-bg);
-            color: var(--text);
+
+        * {
+            box-sizing: border-box;
             margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            height: 100vh;
+            display: grid;
+            grid-template-columns: 60px 280px 1fr 300px;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: var(--surface);
+            border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            min-height: 100vh;
+            padding: 20px 0;
+            gap: 25px;
         }
-        .container {
-            width: 80%;
-            max-width: 1000px;
-            padding: 40px;
-            background: var(--card-bg);
-            border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            border-top: 5px solid var(--gold);
-        }
-        h1 {
-            color: var(--gold);
-            font-size: 2.5em;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        .chart-placeholder {
-            width: 100%;
-            height: 400px;
-            background: #252525;
-            border-radius: 10px;
+
+        .logo {
+            width: 32px;
+            height: 32px;
+            background: var(--accent-buy);
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #666;
+            color: black;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .nav-item {
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: 0.2s;
+            padding: 8px;
+            border-radius: 10px;
+        }
+
+        .nav-item:hover,
+        .nav-item.active {
+            color: var(--accent-buy);
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        /* Market Sidebar */
+        .market-list {
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .market-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+
+        .market-tabs {
+            display: flex;
+            padding: 10px 20px;
+            gap: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .market-tab {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding-bottom: 5px;
+        }
+
+        .market-tab.active {
+            color: var(--text-primary);
+            border-bottom: 2px solid var(--accent-buy);
+        }
+
+        .search-bar {
+            padding: 15px 20px;
+        }
+
+        .search-bar input {
+            width: 100%;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: white;
+            font-size: 0.9em;
+        }
+
+        .market-items {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .market-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 20px;
+            cursor: pointer;
+            transition: 0.2s;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+        }
+
+        .market-item:hover {
+            background: var(--surface-hover);
+        }
+
+        .item-info .symbol {
+            font-weight: 600;
+            display: block;
+        }
+
+        .item-info .full-name {
+            font-size: 0.75em;
+            color: var(--text-secondary);
+        }
+
+        .item-price {
+            text-align: right;
+        }
+
+        .price-val {
+            font-weight: 600;
+            display: block;
+        }
+
+        .price-change {
+            font-size: 0.75em;
+        }
+
+        .down {
+            color: var(--accent-sell);
+        }
+
+        .up {
+            color: var(--accent-buy);
+        }
+
+        /* Main Workspace */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-dark);
+        }
+
+        .top-nav {
+            height: 60px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 25px;
+            background: var(--surface);
+        }
+
+        .pair-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .btn-ai {
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+            border: none;
+            padding: 6px 15px;
+            border-radius: 20px;
+            color: white;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+
+        .account-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .balance-box {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 5px 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+
+        .balance-box .label {
+            color: var(--text-secondary);
+            font-size: 0.75em;
+            display: block;
+        }
+
+        /* Chart Area */
+        .chart-container {
+            flex: 1;
+            padding: 10px;
+            position: relative;
+        }
+
+        #tv-chart {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Order Panel */
+        .order-panel {
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .panel-title {
+            font-size: 1em;
+            font-weight: 600;
+        }
+
+        .buy-sell-toggle {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            background: var(--bg-dark);
+            border-radius: 10px;
+            padding: 4px;
+        }
+
+        .toggle-btn {
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-secondary);
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .toggle-btn.sell.active {
+            background: var(--accent-sell);
+            color: white;
+        }
+
+        .toggle-btn.buy.active {
+            background: var(--accent-buy);
+            color: white;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .input-group label {
+            font-size: 0.75em;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-wrapper {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+        }
+
+        .input-wrapper input {
+            background: transparent;
+            border: none;
+            color: white;
+            padding: 10px 0;
+            width: 100%;
+            outline: none;
+        }
+
+        .action-btn {
+            margin-top: auto;
+            border: none;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 1em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .action-btn.buy {
+            background: var(--accent-buy);
+            color: black;
+            box-shadow: 0 5px 20px rgba(16, 185, 129, 0.4);
+        }
+
+        .action-btn.buy:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.5);
+        }
+
+        /* Branding Footer */
+        .branding-footer {
             margin-top: 20px;
-            border: 1px dashed var(--gold);
+            text-align: center;
+            font-size: 0.7em;
+            color: var(--text-secondary);
         }
     </style>
 </head>
+
 <body>
-    <div class="container">
-        <h1>Gold Market Dashboard</h1>
-        <p>Theo dõi thị trường vàng thế giới với độ chính xác cao.</p>
-        <div class="chart-placeholder">
-            Biểu đồ nến sẽ được hiển thị ở đây
+    <nav class="sidebar">
+        <div class="logo">TT</div>
+        <div class="nav-item active" title="Dashboard"><i data-lucide="layout-dashboard"></i></div>
+        <div class="nav-item" title="Charts"><i data-lucide="line-chart"></i></div>
+        <div class="nav-item" title="Portfolio"><i data-lucide="briefcase"></i></div>
+        <div class="nav-item" title="History"><i data-lucide="history"></i></div>
+        <div class="nav-item" style="margin-top: auto;" title="Settings"><i data-lucide="settings"></i></div>
+    </nav>
+
+    <aside class="market-list">
+        <div class="market-header">Thị trường</div>
+        <div class="market-tabs">
+            <span class="market-tab active">Hàng hóa</span>
+            <span class="market-tab">Tiền tệ</span>
+            <span class="market-tab">Tiền điện tử</span>
         </div>
-    </div>
+        <div class="search-bar">
+            <input type="text" placeholder="Tìm kiếm tài sản...">
+        </div>
+        <div class="market-items">
+            <div class="market-item">
+                <div class="item-info">
+                    <span class="symbol">GOLD</span>
+                    <span class="full-name">XAUUSD</span>
+                </div>
+                <div class="item-price">
+                    <span class="price-val">5,214.30</span>
+                    <span class="price-change down">-1.24%</span>
+                </div>
+            </div>
+            <div class="market-item active" style="background: var(--surface-hover);">
+                <div class="item-info">
+                    <span class="symbol">EURUSD</span>
+                    <span class="full-name">Euro / US Dollar</span>
+                </div>
+                <div class="item-price">
+                    <span class="price-val">1.15181</span>
+                    <span class="price-change up">+0.05%</span>
+                </div>
+            </div>
+            <div class="market-item">
+                <div class="item-info">
+                    <span class="symbol">SILVER</span>
+                    <span class="full-name">XAGUSD</span>
+                </div>
+                <div class="item-price">
+                    <span class="price-val">70.203</span>
+                    <span class="price-change down">-0.85%</span>
+                </div>
+            </div>
+            <div class="market-item">
+                <div class="item-info">
+                    <span class="symbol">BTCUSD</span>
+                    <span class="full-name">Bitcoin / US Dollar</span>
+                </div>
+                <div class="item-price">
+                    <span class="price-val">68,245.10</span>
+                    <span class="price-change up">+2.14%</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="top-nav">
+            <div class="pair-info">
+                <i data-lucide="trending-up" class="up"></i>
+                <h2 style="font-size: 1.2em;">EURUSD <span
+                        style="font-size: 0.6em; color: var(--text-secondary); font-weight: 400;">Forex</span></h2>
+                <button class="btn-ai"><i data-lucide="sparkles"></i> Hỏi AI</button>
+            </div>
+            <div class="account-info">
+                <div class="balance-box">
+                    <span class="label">Tài khoản Live</span>
+                    <strong>$25,182.45</strong>
+                </div>
+                <div class="nav-item"><i data-lucide="bell"></i></div>
+                <div class="nav-item"><i data-lucide="user"></i></div>
+            </div>
+        </header>
+
+        <div class="chart-container">
+            <div id="tv-chart"></div>
+        </div>
+    </main>
+
+    <section class="order-panel">
+        <div class="panel-title">Đặt lệnh nhanh</div>
+        <div class="buy-sell-toggle">
+            <button class="toggle-btn sell">BÁN</button>
+            <button class="toggle-btn buy active">MUA</button>
+        </div>
+
+        <div class="input-group">
+            <label>Số lượng</label>
+            <div class="input-wrapper">
+                <input type="number" value="1000">
+                <span style="font-size: 0.8em; color: var(--text-secondary);">EUR</span>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label>Take Profit (TP)</label>
+            <div class="input-wrapper">
+                <input type="text" placeholder="Chưa đặt">
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label>Stop Loss (SL)</label>
+            <div class="input-wrapper">
+                <input type="text" placeholder="Chưa đặt">
+            </div>
+        </div>
+
+        <div class="action-btn-container" style="margin-top: auto; display: flex; flex-direction: column; gap: 10px;">
+            <button class="action-btn buy">Đặt Lệnh Mua</button>
+            <div class="branding-footer">
+                Designed with 💚 by Nguyen Thien Thanh
+            </div>
+        </div>
+    </section>
+
+    <script src="trading_logic.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
 </body>
+
 </html>
