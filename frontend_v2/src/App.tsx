@@ -45,7 +45,7 @@ const App: React.FC = () => {
         wickDownColor: '#EF4444',
       });
 
-      const startSimulation = (lastPoint: any) => {
+      const startSimulation = (lastPoint: any, basePrice: number) => {
         let current = { ...lastPoint };
         let lastMinute = Math.floor(Date.now() / 60000);
 
@@ -74,6 +74,11 @@ const App: React.FC = () => {
           }
 
           setCurrentPrice(current.close);
+
+          // Calculate and set price change percentage
+          const pChange = ((current.close - basePrice) / basePrice) * 100;
+          setPriceChange(parseFloat(pChange.toFixed(2)));
+
           candlestickSeries.update(current);
         }, 1000);
       };
@@ -87,19 +92,20 @@ const App: React.FC = () => {
             chart.timeScale().fitContent();
 
             const last = data[data.length - 1];
+            const basePrice = data[0].open;
             setCurrentPrice(last.close);
 
             // Start live simulation based on last data point
-            startSimulation(last);
+            startSimulation(last, basePrice);
           } else {
             const mockData = generateMockData();
             candlestickSeries.setData(mockData);
-            startSimulation(mockData[mockData.length - 1]);
+            startSimulation(mockData[mockData.length - 1], mockData[0].open);
           }
         } catch (err) {
           const mockData = generateMockData();
           candlestickSeries.setData(mockData);
-          startSimulation(mockData[mockData.length - 1]);
+          startSimulation(mockData[mockData.length - 1], mockData[0].open);
         }
       };
 
