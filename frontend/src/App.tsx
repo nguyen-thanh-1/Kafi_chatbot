@@ -11,12 +11,24 @@ const App: React.FC = () => {
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [activeAsset, setActiveAsset] = useState('GOLD');
   const [sidebarView, setSidebarView] = useState<'market' | 'ai'>('market');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentPrice, setCurrentPrice] = useState(2154.30);
   const [priceChange, setPriceChange] = useState(-0.24);
   const [chatMessages, setChatMessages] = useState([
     { role: 'assistant', text: 'Chào bạn! Tôi là AI hỗ trợ giao dịch. Bạn cần giúp gì về thị trường Vàng hôm nay?' }
   ]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    if (sidebarView === 'ai') {
+      scrollToBottom();
+    }
+  }, [chatMessages, sidebarView]);
   const [inputValue, setInputValue] = useState('');
+  const [sessionId] = useState(() => Math.random().toString(36).substring(7));
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -85,7 +97,8 @@ const App: React.FC = () => {
 
       const fetchData = async () => {
         try {
-          const response = await fetch('http://localhost:8000/api/market-data');
+          const apiUrl = import.meta.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+          const response = await fetch(`${apiUrl}/api/market-data`);
           const data = await response.json();
           if (Array.isArray(data) && data.length > 0) {
             candlestickSeries.setData(data);
@@ -151,16 +164,64 @@ const App: React.FC = () => {
     return data;
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
-    const newMessages = [...chatMessages, { role: 'user', text: inputValue }];
+
+    const userMessage = { role: 'user', text: inputValue };
+    const newMessages = [...chatMessages, userMessage];
     setChatMessages(newMessages);
     setInputValue('');
 
-    // Simple mock response
-    setTimeout(() => {
-      setChatMessages([...newMessages, { role: 'assistant', text: 'Tôi đang phân tích dữ liệu thị trường cho bạn...' }]);
-    }, 800);
+    // Add a placeholder for the assistant's response
+    const assistantPlaceholder = { role: 'assistant', text: '' };
+    setChatMessages(prev => [...prev, assistantPlaceholder]);
+    const apiUrl = import.meta.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+    try {
+      const response = await fetch(`${apiUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: inputValue,
+          session_id: sessionId,
+          history: [] // History is now managed by the session on backend
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to connect to AI');
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullAssistantText = '';
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          fullAssistantText += chunk;
+
+          // Update the last message in the set (the assistant response)
+          setChatMessages(prev => {
+            const updated = [...prev];
+            if (updated.length > 0) {
+              updated[updated.length - 1] = { 
+                role: 'assistant', 
+                text: fullAssistantText 
+              };
+            }
+            return updated;
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Chat error:', err);
+      setChatMessages(prev => [
+        ...prev.slice(0, -1), 
+        { role: 'assistant', text: 'Xin lỗi, tôi gặp lỗi kết nối với máy chủ AI. Vui lòng thử lại sau!' }
+      ]);
+    }
   };
 
   return (
@@ -226,6 +287,7 @@ const App: React.FC = () => {
                   {msg.text}
                 </div>
               ))}
+              <div ref={messagesEndRef} />
             </div>
             <div style={styles.chatInput}>
               <input
@@ -342,7 +404,14 @@ const styles: Record<string, React.CSSProperties> = {
   sidebar: { background: '#161B22', borderRight: '1px solid #30363D', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 0', gap: '20px' },
   logo: { width: '32px', height: '32px', background: '#10B981', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'black', fontWeight: 'bold', marginBottom: '10px' },
   navItem: { color: '#8B949E', cursor: 'pointer', padding: '10px', borderRadius: '10px', transition: '0.2s' },
-  marketSidebar: { background: '#161B22', borderRight: '1px solid #30363D', display: 'flex', flexDirection: 'column' },
+  marketSidebar: { 
+    background: '#161B22', 
+    borderRight: '1px solid #30363D', 
+    display: 'flex', 
+    flexDirection: 'column',
+    height: '100vh',
+    overflow: 'hidden' 
+  },
   marketHeader: { padding: '20px', fontSize: '1em', fontWeight: 600 },
   marketTabs: { display: 'flex', padding: '0 20px 10px', gap: '15px', borderBottom: '1px solid #30363D' },
   marketTab: { fontSize: '0.8em', color: '#8B949E', cursor: 'pointer', paddingBottom: '5px' },
@@ -371,7 +440,15 @@ const styles: Record<string, React.CSSProperties> = {
   footerBranding: { marginTop: '15px', fontSize: '0.65em', color: '#8B949E' },
   chatContainer: { display: 'flex', flexDirection: 'column', height: '100%' },
   chatMessages: { flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' },
-  message: { padding: '10px 14px', borderRadius: '12px', fontSize: '0.85em', maxWidth: '85%' },
+  message: { 
+    padding: '10px 14px', 
+    borderRadius: '12px', 
+    fontSize: '0.85em', 
+    maxWidth: '85%',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    lineHeight: '1.5'
+  },
   chatInput: { padding: '20px', borderTop: '1px solid #30363D', display: 'flex', gap: '10px', alignItems: 'center' }
 };
 

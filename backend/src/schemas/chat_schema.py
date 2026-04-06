@@ -7,7 +7,8 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., description="The new message from the user")
-    history: Optional[List[ChatMessage]] = Field(default=[], description="Previous conversation history")
+    session_id: Optional[str] = Field(None, description="Unique session ID for conversation context")
+    history: Optional[List[ChatMessage]] = Field(default=[], description="Manual conversation history (optional if session_id is used)")
 
 class ChatResponse(BaseModel):
     # This could be used for non-streaming responses if needed

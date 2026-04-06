@@ -4,6 +4,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 import torch
 import warnings
 from src.utils.app_config import AppConfig
+from src.utils.logger import log_user_input, log_agent_response
 
 warnings.filterwarnings('ignore')
 
@@ -64,12 +65,10 @@ class QwenLLM:
         for msg in history:
             messages.append(msg)
         
-        if self.enable_thinking:
-            wrapped_input = f"Trả lời CHỈ bằng TIẾNG VIỆT. TUYỆT ĐỐI KHÔNG dùng tiếng Trung.\n\nCâu hỏi: {user_input}"
-        else:
-            wrapped_input = f"TRẢ LỜI TRỰC TIẾP, KHÔNG SUY NGHĨ. CHỈ bằng TIẾNG VIỆT. TUYỆT ĐỐI KHÔNG dùng tiếng Trung.\n\nCâu hỏi: {user_input}"
-        
-        messages.append({"role": "user", "content": wrapped_input})
+        # Log the user message nicely in the console
+        log_user_input(user_input)
+
+        messages.append({"role": "user", "content": user_input})
 
         text = self.tokenizer.apply_chat_template(
             messages,
@@ -100,8 +99,13 @@ class QwenLLM:
         thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
         thread.start()
 
+        full_response = ""
         for new_text in streamer:
+            full_response += new_text
             yield new_text
+        
+        # Log the final response in a panel
+        log_agent_response("Financial Assistant", full_response)
 
 # Singleton instance
 _llm_instance = None
