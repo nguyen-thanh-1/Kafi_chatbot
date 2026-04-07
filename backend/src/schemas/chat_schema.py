@@ -13,3 +13,10 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     # This could be used for non-streaming responses if needed
     response: str
+
+class AvailableModel(BaseModel):
+    id: str
+    name: str
+
+class ModelSelectRequest(BaseModel):
+    model_id: str

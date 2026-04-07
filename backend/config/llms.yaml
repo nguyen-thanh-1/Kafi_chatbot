@@ -1,10 +1,35 @@
 default_model: qwen-3-8b
 
 model_list:
-  - model_name: qwen-3-8b
-    huggingface_model: Qwen/Qwen3-8B
+  - id: llama-3.1-8b
+    name: "Llama 3.1 (8B)"
+    huggingface_model: meta-llama/Llama-3.1-8B-Instruct
     enable_thinking: false
     max_new_tokens: 2048
     temperature: 0.7
     top_p: 0.8
+    top_k: 20
+  - id: qwen-2.5-7b
+    name: "Qwen 2.5 (7B)"
+    huggingface_model: Qwen/Qwen2.5-7B-Instruct
+    enable_thinking: false
+    max_new_tokens: 2048
+    temperature: 0.7
+    top_p: 0.8
+    top_k: 20
+  - id: qwen-3-8b
+    name: "Qwen 3 (8B)"
+    huggingface_model: Qwen/Qwen3-8B
+    enable_thinking: false
+    max_new_tokens: 8192
+    temperature: 0.6
+    top_p: 0.95
+    top_k: 20
+  - id: qwen-3.5-9b
+    name: "Qwen 3.5 (9B)"
+    huggingface_model: Qwen/Qwen3.5-9B
+    enable_thinking: false
+    max_new_tokens: 8192
+    temperature: 0.6
+    top_p: 0.95
     top_k: 20

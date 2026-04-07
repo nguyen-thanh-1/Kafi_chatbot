@@ -1,12 +1,34 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from src.schemas.chat_schema import ChatRequest, ChatResponse
+from src.schemas.chat_schema import ChatRequest, ChatResponse, ModelSelectRequest, AvailableModel
 from src.agents.financial_agent import get_financial_agent
 from typing import List
 
 from src.conversation.session_manager import get_session_manager
+from src.utils.llm import get_llm
 
 router = APIRouter(prefix="/api/chat", tags=["chatbot"])
+
+@router.get("/models", response_model=List[AvailableModel])
+async def get_models():
+    """Returns a list of available AI models."""
+    llm = get_llm()
+    return llm.get_available_models()
+
+@router.get("/current-model")
+async def get_current_model():
+    """Returns the ID of the currently loaded model."""
+    llm = get_llm()
+    return {"model_id": llm.current_model_id}
+
+@router.post("/model")
+async def select_model(request: ModelSelectRequest):
+    """Switches the active AI model."""
+    llm = get_llm()
+    success = llm.switch_model(request.model_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=f"Failed to load model {request.model_id}")
+    return {"status": "success", "model_id": request.model_id}
 
 @router.post("", response_model=None)
 async def chat_endpoint(request: ChatRequest):

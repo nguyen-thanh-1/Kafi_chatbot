@@ -17,6 +17,11 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState([
     { role: 'assistant', text: 'Chào bạn! Tôi là AI hỗ trợ giao dịch. Bạn cần giúp gì về thị trường Vàng hôm nay?' }
   ]);
+  
+  // Model state
+  const [models, setModels] = useState<{id: string, name: string}[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [isModelLoading, setIsModelLoading] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -29,6 +34,60 @@ const App: React.FC = () => {
   }, [chatMessages, sidebarView]);
   const [inputValue, setInputValue] = useState('');
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
+
+  // Fetch models on mount
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const apiUrl = import.meta.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const [modelsRes, currentModelRes] = await Promise.all([
+          fetch(`${apiUrl}/api/chat/models`),
+          fetch(`${apiUrl}/api/chat/current-model`)
+        ]);
+        
+        if (modelsRes.ok && currentModelRes.ok) {
+          const modelsData = await modelsRes.json();
+          const currentData = await currentModelRes.json();
+          setModels(modelsData);
+          setSelectedModel(currentData.model_id);
+        }
+      } catch (err) {
+        console.error("Failed to fetch models:", err);
+      }
+    };
+    fetchModels();
+  }, []);
+
+  const handleModelChange = async (modelId: string) => {
+    if (modelId === selectedModel || isModelLoading) return;
+    
+    setIsModelLoading(true);
+    setSelectedModel(modelId);
+    
+    try {
+      const apiUrl = import.meta.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/api/chat/model`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_id: modelId })
+      });
+      
+      if (!response.ok) throw new Error('Failed to switch model');
+      
+      setChatMessages(prev => [...prev, { 
+        role: 'assistant', 
+        text: `Đã chuyển sang mô hình: ${models.find(m => m.id === modelId)?.name || modelId}` 
+      }]);
+    } catch (err) {
+      console.error("Model switch error:", err);
+      // Revert on failure
+      fetch(`${import.meta.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/chat/current-model`)
+        .then(res => res.json())
+        .then(data => setSelectedModel(data.model_id));
+    } finally {
+      setIsModelLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -276,7 +335,31 @@ const App: React.FC = () => {
           </>
         ) : (
           <div style={styles.chatContainer}>
-            <div style={styles.marketHeader}>AI Support</div>
+            <div style={{ ...styles.marketHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>AI Support</span>
+              {models.length > 0 && (
+                <select 
+                  value={selectedModel} 
+                  onChange={(e) => handleModelChange(e.target.value)}
+                  disabled={isModelLoading}
+                  style={{
+                    background: '#0D1117',
+                    color: '#10B981',
+                    border: '1px solid #30363D',
+                    borderRadius: '4px',
+                    fontSize: '0.7em',
+                    padding: '2px 4px',
+                    outline: 'none',
+                    cursor: isModelLoading ? 'not-allowed' : 'pointer',
+                    maxWidth: '120px'
+                  }}
+                >
+                  {models.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
             <div style={styles.chatMessages}>
               {chatMessages.map((msg, i) => (
                 <div key={i} style={{
@@ -292,13 +375,21 @@ const App: React.FC = () => {
             <div style={styles.chatInput}>
               <input
                 type="text"
-                placeholder="Hỏi AI..."
-                style={styles.ghostInput}
+                placeholder={isModelLoading ? "Đang tải mô hình..." : "Hỏi AI..."}
+                style={{ ...styles.ghostInput, opacity: isModelLoading ? 0.5 : 1 }}
                 value={inputValue}
+                disabled={isModelLoading}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
               />
-              <Send size={16} style={{ cursor: 'pointer', color: '#10B981' }} onClick={handleSendMessage} />
+              <Send 
+                size={16} 
+                style={{ 
+                  cursor: isModelLoading ? 'not-allowed' : 'pointer', 
+                  color: isModelLoading ? '#30363D' : '#10B981' 
+                }} 
+                onClick={!isModelLoading ? handleSendMessage : undefined} 
+              />
             </div>
           </div>
         )}
