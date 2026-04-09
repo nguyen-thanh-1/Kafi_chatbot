@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard, LineChart, Briefcase, History, Settings,
   TrendingUp, Sparkles, Bell, User, Search, MessageSquare, Send
@@ -7,6 +7,10 @@ import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
 
 const App: React.FC = () => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const apiUrl =
+    import.meta.env.VITE_API_URL ||
+    (import.meta.env as any).NEXT_PUBLIC_API_URL ||
+    'http://localhost:8000';
   const [activeTab, setActiveTab] = useState('Hàng hóa');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [activeAsset, setActiveAsset] = useState('GOLD');
@@ -15,7 +19,7 @@ const App: React.FC = () => {
   const [currentPrice, setCurrentPrice] = useState(2154.30);
   const [priceChange, setPriceChange] = useState(-0.24);
   const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', text: 'Chào bạn! Tôi là AI hỗ trợ giao dịch. Bạn cần giúp gì về thị trường Vàng hôm nay?' }
+    { role: 'assistant', text: 'Chào bạn! Tôi là AI hỗ trợ giao dịch. Bạn cần giúp gì hôm nay?' }
   ]);
   
   // Model state
@@ -34,12 +38,14 @@ const App: React.FC = () => {
   }, [chatMessages, sidebarView]);
   const [inputValue, setInputValue] = useState('');
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
+  const modelsFetchedRef = useRef(false);
 
   // Fetch models on mount
   useEffect(() => {
+    if (modelsFetchedRef.current) return;
+    modelsFetchedRef.current = true;
     const fetchModels = async () => {
       try {
-        const apiUrl = import.meta.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         const [modelsRes, currentModelRes] = await Promise.all([
           fetch(`${apiUrl}/api/chat/models`),
           fetch(`${apiUrl}/api/chat/current-model`)
@@ -65,7 +71,6 @@ const App: React.FC = () => {
     setSelectedModel(modelId);
     
     try {
-      const apiUrl = import.meta.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const response = await fetch(`${apiUrl}/api/chat/model`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -81,7 +86,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Model switch error:", err);
       // Revert on failure
-      fetch(`${import.meta.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/chat/current-model`)
+      fetch(`${apiUrl}/api/chat/current-model`)
         .then(res => res.json())
         .then(data => setSelectedModel(data.model_id));
     } finally {
@@ -156,8 +161,8 @@ const App: React.FC = () => {
 
       const fetchData = async () => {
         try {
-          const apiUrl = import.meta.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
           const response = await fetch(`${apiUrl}/api/market-data`);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const data = await response.json();
           if (Array.isArray(data) && data.length > 0) {
             candlestickSeries.setData(data);
@@ -234,7 +239,6 @@ const App: React.FC = () => {
     // Add a placeholder for the assistant's response
     const assistantPlaceholder = { role: 'assistant', text: '' };
     setChatMessages(prev => [...prev, assistantPlaceholder]);
-    const apiUrl = import.meta.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
     try {
       const response = await fetch(`${apiUrl}/api/chat`, {
@@ -337,28 +341,30 @@ const App: React.FC = () => {
           <div style={styles.chatContainer}>
             <div style={{ ...styles.marketHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>AI Support</span>
-              {models.length > 0 && (
-                <select 
-                  value={selectedModel} 
-                  onChange={(e) => handleModelChange(e.target.value)}
-                  disabled={isModelLoading}
-                  style={{
-                    background: '#0D1117',
-                    color: '#10B981',
-                    border: '1px solid #30363D',
-                    borderRadius: '4px',
-                    fontSize: '0.7em',
-                    padding: '2px 4px',
-                    outline: 'none',
-                    cursor: isModelLoading ? 'not-allowed' : 'pointer',
-                    maxWidth: '120px'
-                  }}
-                >
-                  {models.map(m => (
+              <select
+                value={selectedModel}
+                onChange={(e) => handleModelChange(e.target.value)}
+                disabled={isModelLoading || models.length === 0}
+                style={{
+                  background: '#0D1117',
+                  color: '#10B981',
+                  border: '1px solid #30363D',
+                  borderRadius: '4px',
+                  fontSize: '0.7em',
+                  padding: '2px 4px',
+                  outline: 'none',
+                  cursor: isModelLoading || models.length === 0 ? 'not-allowed' : 'pointer',
+                  maxWidth: '120px'
+                }}
+              >
+                {models.length === 0 ? (
+                  <option value="" disabled>Loading...</option>
+                ) : (
+                  models.map(m => (
                     <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-              )}
+                  ))
+                )}
+              </select>
             </div>
             <div style={styles.chatMessages}>
               {chatMessages.map((msg, i) => (

@@ -1,6 +1,6 @@
 import os
 import gc
-from threading import Thread
+from threading import Lock, Thread
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TextIteratorStreamer
 import torch
 import warnings
@@ -21,9 +21,17 @@ class LLMManager:
         self.enable_thinking = False
         self.system_prompt = AppConfig.get_agents_config().get("financial_assistant", {}).get("instructions", "Bạn là chuyên gia tài chính AI.")
         self.bad_words_ids = None
+        self._load_lock = Lock()
 
-        # Load default model
-        self.switch_model(self.default_model_id)
+        # Do not eagerly load a model here.
+        # Eager loading blocks lightweight endpoints (e.g. /api/chat/models) on first request.
+        self.current_model_id = self.default_model_id
+
+    def ensure_loaded(self) -> bool:
+        """Ensure a model is loaded; returns True when ready."""
+        if self.model is not None and self.tokenizer is not None:
+            return True
+        return self.switch_model(self.current_model_id or self.default_model_id)
 
     def _cleanup_vram(self):
         """Unload current model and free VRAM."""
@@ -45,48 +53,49 @@ class LLMManager:
         return [{"id": m["id"], "name": m["name"]} for m in self.model_list]
 
     def switch_model(self, model_id: str):
-        if self.current_model_id == model_id and self.model is not None:
-            return True
+        with self._load_lock:
+            if self.current_model_id == model_id and self.model is not None and self.tokenizer is not None:
+                return True
 
-        # Find model config
-        model_cfg = next((m for m in self.model_list if m["id"] == model_id), None)
-        if not model_cfg:
-            print(f"Model ID {model_id} not found in config.")
-            return False
+            # Find model config
+            model_cfg = next((m for m in self.model_list if m["id"] == model_id), None)
+            if not model_cfg:
+                print(f"Model ID {model_id} not found in config.")
+                return False
 
-        self._cleanup_vram()
+            self._cleanup_vram()
 
-        model_name = model_cfg["huggingface_model"]
-        self.enable_thinking = model_cfg.get("enable_thinking", False)
-        self.current_model_id = model_id
-        
-        print(f"Loading model: {model_name}...")
-        
-        # 4-bit Quantization
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16
-        )
-
-        try:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                quantization_config=bnb_config,
-                device_map="auto",
-                low_cpu_mem_usage=True,
-                torch_dtype=torch.bfloat16,
-                trust_remote_code=True
-            )
+            model_name = model_cfg["huggingface_model"]
+            self.enable_thinking = model_cfg.get("enable_thinking", False)
+            self.current_model_id = model_id
             
-            self.bad_words_ids = self._get_non_vietnamese_bad_words()
-            print(f"Model {model_id} loaded successfully!")
-            return True
-        except Exception as e:
-            print(f"Failed to load model {model_id}: {str(e)}")
-            return False
+            print(f"Loading model: {model_name}...")
+            
+            # 4-bit Quantization
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16
+            )
+
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    quantization_config=bnb_config,
+                    device_map="auto",
+                    low_cpu_mem_usage=True,
+                    torch_dtype=torch.bfloat16,
+                    trust_remote_code=True
+                )
+                
+                self.bad_words_ids = self._get_non_vietnamese_bad_words()
+                print(f"Model {model_id} loaded successfully!")
+                return True
+            except Exception as e:
+                print(f"Failed to load model {model_id}: {str(e)}")
+                return False
 
     def _get_non_vietnamese_bad_words(self):
         bad_words = []
@@ -108,8 +117,8 @@ class LLMManager:
             return None
 
     def generate_response(self, user_input, history=[]):
-        if self.model is None or self.tokenizer is None:
-            yield "[Error] No model loaded."
+        if not self.ensure_loaded():
+            yield "[Error] Failed to load model."
             return
 
         # Format history

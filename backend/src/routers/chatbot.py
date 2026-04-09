@@ -6,14 +6,16 @@ from typing import List
 
 from src.conversation.session_manager import get_session_manager
 from src.utils.llm import get_llm
+from src.utils.app_config import AppConfig
 
 router = APIRouter(prefix="/api/chat", tags=["chatbot"])
 
 @router.get("/models", response_model=List[AvailableModel])
 async def get_models():
     """Returns a list of available AI models."""
-    llm = get_llm()
-    return llm.get_available_models()
+    llm_cfg = AppConfig.get_llm_config()
+    model_list = llm_cfg.get("model_list", [])
+    return [{"id": m.get("id"), "name": m.get("name")} for m in model_list]
 
 @router.get("/current-model")
 async def get_current_model():

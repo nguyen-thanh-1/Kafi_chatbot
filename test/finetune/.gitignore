@@ -1,0 +1,6 @@
+# Generated data / artifacts
+data/processed/
+checkpoint/
+.hf_cache/
+.uv-cache/
+
