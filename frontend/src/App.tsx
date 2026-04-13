@@ -15,6 +15,11 @@ const App: React.FC = () => {
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [activeAsset, setActiveAsset] = useState('GOLD');
   const [sidebarView, setSidebarView] = useState<'market' | 'ai'>('market');
+  const CHAT_MIN_WIDTH = 280;
+  const [chatWidth, setChatWidth] = useState(CHAT_MIN_WIDTH);
+  const [isChatResizing, setIsChatResizing] = useState(false);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(CHAT_MIN_WIDTH);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentPrice, setCurrentPrice] = useState(2154.30);
   const [priceChange, setPriceChange] = useState(-0.24);
@@ -36,9 +41,43 @@ const App: React.FC = () => {
       scrollToBottom();
     }
   }, [chatMessages, sidebarView]);
+
+  useEffect(() => {
+    // Grid column changes don't always trigger a window resize event; notify the chart.
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
+  }, [sidebarView]);
   const [inputValue, setInputValue] = useState('');
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
   const modelsFetchedRef = useRef(false);
+
+  useEffect(() => {
+    const clamp = () => {
+      const maxWidth = Math.floor(window.innerWidth * 0.5);
+      setChatWidth(w => Math.max(CHAT_MIN_WIDTH, Math.min(w, maxWidth)));
+    };
+    clamp();
+    window.addEventListener('resize', clamp);
+    return () => window.removeEventListener('resize', clamp);
+  }, []);
+
+  useEffect(() => {
+    if (!isChatResizing) return;
+
+    const onMove = (e: MouseEvent) => {
+      const dx = e.clientX - resizeStartXRef.current;
+      const maxWidth = Math.floor(window.innerWidth * 0.5);
+      const next = resizeStartWidthRef.current + dx;
+      setChatWidth(Math.max(CHAT_MIN_WIDTH, Math.min(next, maxWidth)));
+    };
+    const onUp = () => setIsChatResizing(false);
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [isChatResizing]);
 
   // Fetch models on mount
   useEffect(() => {
@@ -288,7 +327,17 @@ const App: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '60px 280px 1fr 300px', height: '100vh', width: '100vw' }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: sidebarView === 'ai' ? '60px 0px 1fr 300px' : '60px 280px 1fr 300px',
+        height: '100vh',
+        width: '100vw',
+        position: 'relative',
+        userSelect: isChatResizing ? 'none' : 'auto',
+        cursor: isChatResizing ? 'ew-resize' : 'auto'
+      }}
+    >
       {/* Sidebar */}
       <nav style={styles.sidebar}>
         <div style={styles.logo}>TT</div>
@@ -304,8 +353,8 @@ const App: React.FC = () => {
       </nav>
 
       {/* Second Column: Market or AI Chat */}
-      <section style={styles.marketSidebar}>
-        {sidebarView === 'market' ? (
+      <section style={{ ...styles.marketSidebar, width: sidebarView === 'ai' ? 0 : 280, overflow: 'hidden' }}>
+        {sidebarView === 'market' && (
           <>
             <div style={styles.marketHeader}>Thị trường</div>
             <div style={styles.marketTabs}>
@@ -334,10 +383,21 @@ const App: React.FC = () => {
                 active={activeAsset === 'GOLD'}
                 onClick={() => setActiveAsset('GOLD')}
               />
-              {/* Other assets removed as per request */}
             </div>
           </>
-        ) : (
+        )}
+      </section>
+
+      {sidebarView === 'ai' && (
+        <div style={{ ...styles.chatOverlay, width: chatWidth }}>
+          <div
+            style={styles.chatResizeHandle}
+            onMouseDown={(e) => {
+              setIsChatResizing(true);
+              resizeStartXRef.current = e.clientX;
+              resizeStartWidthRef.current = chatWidth;
+            }}
+          />
           <div style={styles.chatContainer}>
             <div style={{ ...styles.marketHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>AI Support</span>
@@ -398,8 +458,8 @@ const App: React.FC = () => {
               />
             </div>
           </div>
-        )}
-      </section>
+        </div>
+      )}
 
       {/* Main Content */}
       <main style={styles.mainContent}>
@@ -508,6 +568,27 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     height: '100vh',
     overflow: 'hidden' 
+  },
+  chatOverlay: {
+    position: 'absolute',
+    left: 60,
+    top: 0,
+    bottom: 0,
+    background: '#161B22',
+    borderRight: '1px solid #30363D',
+    boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+    zIndex: 20,
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  chatResizeHandle: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 6,
+    cursor: 'ew-resize',
+    background: 'transparent'
   },
   marketHeader: { padding: '20px', fontSize: '1em', fontWeight: 600 },
   marketTabs: { display: 'flex', padding: '0 20px 10px', gap: '15px', borderBottom: '1px solid #30363D' },

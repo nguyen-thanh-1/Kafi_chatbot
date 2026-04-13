@@ -1,0 +1,11 @@
+{
+  "include": ["src"],
+  "autoSearchPaths": false,
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": ["."]
+    }
+  ]
+}
+
