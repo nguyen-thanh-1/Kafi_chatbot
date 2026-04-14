@@ -1,0 +1,8 @@
+[guardrails] loaded model; vram=allocated=514MB reserved=1046MB               guardrails.py:42
+                             max_allocated=959MB total=16311MB (delta +514MB alloc, +1046MB reserv)
+
+[router] loaded model; vram=allocated=3069MB reserved=3132MB max_allocated=3107MB router.py:43
+                             total=16311MB (delta +2556MB alloc, +2086MB reserv)   
+
+[embeddings] loaded model; vram=allocated=5236MB reserved=5262MB              embeddings.py:50
+                             max_allocated=5236MB total=16311MB (delta +2166MB alloc, +2130MB reserv)

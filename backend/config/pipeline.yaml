@@ -1,0 +1,40 @@
+router:
+  huggingface_model: Qwen/Qwen3-4B-Instruct-2507
+  quantization: 4bit
+  max_new_tokens: 8
+  temperature: 0.0
+  # Optional override prompt. If omitted, defaults are used in code.
+  # system_prompt: |
+  #   ...
+  # Cosine similarity threshold for cache hit
+  routes:
+    - FINANCIAL
+    - KNOWLEDGE
+    - GENERAL
+
+guardrails:
+  huggingface_model: Qwen/Qwen3Guard-Gen-0.6B
+  quantization: 4bit
+  max_new_tokens: 6
+  temperature: 0.0
+  # system_prompt: |
+  #   ...
+
+embeddings:
+  huggingface_model: BAAI/bge-m3
+  normalize: true
+  device: cuda
+
+cache:
+  enabled: true
+  db_path: .cache/semantic_cache.sqlite
+  similarity_threshold: 0.92
+  response_similarity_threshold: 0.97
+  max_entries: 5000
+  top_k_scan: 2000
+
+startup:
+  preload_router: true
+  preload_guardrails: true
+  preload_embeddings: true
+  preload_main_llm: true

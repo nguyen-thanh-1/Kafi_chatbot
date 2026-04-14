@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from src.schemas.chat_schema import ChatRequest, ChatResponse, ModelSelectRequest, AvailableModel
-from src.agents.financial_agent import get_financial_agent
+from src.schemas.chat_schema import ChatRequest, ModelSelectRequest, AvailableModel
 from typing import List
 
 from src.conversation.session_manager import get_session_manager
 from src.utils.llm import get_llm
 from src.utils.app_config import AppConfig
+from src.pipeline.chat_pipeline import get_chat_pipeline
 
 router = APIRouter(prefix="/api/chat", tags=["chatbot"])
 
@@ -36,9 +36,9 @@ async def select_model(request: ModelSelectRequest):
 async def chat_endpoint(request: ChatRequest):
     """
     Chatbot endpoint with session-based history management.
-    Uses the FinancialAgent and SessionManager.
+    Uses the ChatPipeline and SessionManager.
     """
-    agent = get_financial_agent()
+    pipeline = get_chat_pipeline()
     session_manager = get_session_manager()
     
     # Identify history source: either manual history or from session_id
@@ -55,16 +55,21 @@ async def chat_endpoint(request: ChatRequest):
     def generate():
         full_response = ""
         try:
-            # Delegate to the agent ("the brain")
-            for chunk in agent.process_chat(request.message, history):
+            for chunk in pipeline.process(request.message, history):
                 full_response += chunk
                 yield chunk
-            
-            # Save the complete AI response back to the session history
+
             if request.session_id:
                 session_manager.add_message(request.session_id, "assistant", full_response)
-                
         except Exception as e:
-            yield f"\n[Error from Agent] {str(e)}"
+            yield f"\n[Error from Pipeline] {str(e)}"
 
     return StreamingResponse(generate(), media_type="text/plain")
+
+
+@router.get("/trace")
+async def get_last_trace():
+    """Returns the last pipeline routing/cache/guardrails decision for debugging."""
+    pipeline = get_chat_pipeline()
+    trace = pipeline.get_last_trace()
+    return trace.__dict__ if trace is not None else {}
