@@ -108,19 +108,15 @@ class ChatPipeline:
 
             # Cache-hit path: user prompt + cached reference answer -> LLM
             agent = get_financial_agent()
-            cache_context_msg = {
-                "role": "system",
-                "content": (
-                    "[CACHE_HIT]\n"
-                    "Bạn đã từng trả lời câu hỏi tương tự trước đây.\n"
-                    "Dưới đây là câu trả lời tham chiếu (không cần trích nguyên văn, hãy diễn đạt tự nhiên hơn):\n"
-                    f"{cache_hit.response}"
-                ),
-            }
-            augmented_history = list(history or [])
-            augmented_history.append(cache_context_msg)
-
-            gen = agent.process_chat(user_text, augmented_history)
+            augmented_prompt = (
+                "[CACHE_HIT]\n"
+                "Bạn đã từng trả lời câu hỏi tương tự trước đây.\n"
+                "Dưới đây là câu trả lời tham chiếu (không cần trích nguyên văn, hãy diễn đạt tự nhiên hơn):\n"
+                f"{cache_hit.response}\n\n"
+                f"Câu hỏi của người dùng: {user_text}"
+            )
+            
+            gen = agent.process_chat(augmented_prompt, history)
             response_text = yield from self._stream_with_periodic_output_guardrails(chunk_iter=gen)
 
             decision_out, raw_out = self.guardrails.check(response_text)
@@ -152,19 +148,14 @@ class ChatPipeline:
         if decision_in == SafetyDecision.UNSAFE:
             # Do not forward unsafe user content; ask LLM to produce a safe refusal (Vietnamese).
             agent = get_financial_agent()
-            unsafe_marker_msg = {
-                "role": "system",
-                "content": (
-                    "[UNSAFE_INPUT]\n"
-                    "The user's content is likely unsafe/invalid.\n"
-                    "Task: refuse politely in Vietnamese, do NOT repeat the user's content, "
-                    "and guide them to provide a safe/valid request."
-                ),
-            }
-            augmented_history = list(history or [])
-            augmented_history.append(unsafe_marker_msg)
+            unsafe_prompt = (
+                "[UNSAFE_INPUT]\n"
+                "The user's content is likely unsafe/invalid.\n"
+                "Task: refuse politely in Vietnamese, do NOT repeat the user's content, "
+                "and guide them to provide a safe/valid request."
+            )
 
-            gen = agent.process_chat("Hãy phản hồi theo hướng dẫn [UNSAFE_INPUT].", augmented_history)
+            gen = agent.process_chat(unsafe_prompt, history)
             response_text = ""
             for chunk in gen:
                 response_text += chunk
