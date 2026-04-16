@@ -45,7 +45,7 @@ class EmbeddingManager:
                 device = self.device
                 if device.lower() == "cuda" and not torch.cuda.is_available():
                     device = "cpu"
-                self._model = SentenceTransformer(self.model_name, device=device)
+                self._model = SentenceTransformer(self.model_name, device=device, trust_remote_code=True)
             except Exception as e:
                 logger.warning(f"[embeddings] failed to load SentenceTransformer: {e}")
                 self._model = None

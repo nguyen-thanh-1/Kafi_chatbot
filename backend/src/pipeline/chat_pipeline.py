@@ -180,6 +180,25 @@ class ChatPipeline:
         route, router_raw = self.router.classify(user_text)
         logger.info(f"[router] route={route.value} raw={router_raw.strip()[:120]}")
 
+        if route == Routes.OUT_OF_DOMAIN:
+            out_of_domain_msg = (
+                "Rất xin lỗi, mình là AI trợ lý tài chính Kafi nên chỉ hỗ trợ các nghiệp vụ "
+                "về tài chính, đầu tư, chứng khoán hoặc hướng dẫn sử dụng dịch vụ. Mình không thể giải đáp "
+                "những chủ đề ngoài luồng. Bạn có câu hỏi nào về đầu tư hay thị trường cần hỗ trợ không?"
+            )
+            yield out_of_domain_msg
+
+            trace = PipelineTrace(
+                input_safety=decision_in.value,
+                cache_hit=False,
+                cache_similarity=0.0,
+                route=route.value,
+                output_safety="SAFE",
+            )
+            with self._lock:
+                self._last_trace = trace
+            return
+
         # (4) Call tools/models (RAG not wired yet -> all routes go to LLM for now)
         agent = get_financial_agent()
         gen = agent.process_chat(user_text, history)

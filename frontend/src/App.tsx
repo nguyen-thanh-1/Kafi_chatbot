@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard, LineChart, Briefcase, History, Settings,
   TrendingUp, Sparkles, Bell, User, Search, MessageSquare, Send
@@ -17,8 +17,7 @@ const App: React.FC = () => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const apiUrl =
     import.meta.env.VITE_API_URL ||
-    (import.meta.env as any).NEXT_PUBLIC_API_URL ||
-    'http://localhost:8000';
+    '';
   const [activeTab, setActiveTab] = useState('Hàng hóa');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [activeAsset, setActiveAsset] = useState('GOLD');
@@ -37,9 +36,9 @@ const App: React.FC = () => {
 
   const [pipelineTrace, setPipelineTrace] = useState<PipelineTrace | null>(null);
   const [isTraceLoading, setIsTraceLoading] = useState(false);
-  
+
   // Model state
-  const [models, setModels] = useState<{id: string, name: string}[]>([]);
+  const [models, setModels] = useState<{ id: string, name: string }[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [isModelLoading, setIsModelLoading] = useState(false);
 
@@ -110,7 +109,7 @@ const App: React.FC = () => {
           fetch(`${apiUrl}/api/chat/models`),
           fetch(`${apiUrl}/api/chat/current-model`)
         ]);
-        
+
         if (modelsRes.ok && currentModelRes.ok) {
           const modelsData = await modelsRes.json();
           const currentData = await currentModelRes.json();
@@ -126,22 +125,22 @@ const App: React.FC = () => {
 
   const handleModelChange = async (modelId: string) => {
     if (modelId === selectedModel || isModelLoading) return;
-    
+
     setIsModelLoading(true);
     setSelectedModel(modelId);
-    
+
     try {
       const response = await fetch(`${apiUrl}/api/chat/model`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model_id: modelId })
       });
-      
+
       if (!response.ok) throw new Error('Failed to switch model');
-      
-      setChatMessages(prev => [...prev, { 
-        role: 'assistant', 
-        text: `Đã chuyển sang mô hình: ${models.find(m => m.id === modelId)?.name || modelId}` 
+
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        text: `Đã chuyển sang mô hình: ${models.find(m => m.id === modelId)?.name || modelId}`
       }]);
     } catch (err) {
       console.error("Model switch error:", err);
@@ -343,9 +342,9 @@ const App: React.FC = () => {
           setChatMessages(prev => {
             const updated = [...prev];
             if (updated.length > 0) {
-              updated[updated.length - 1] = { 
-                role: 'assistant', 
-                text: fullAssistantText 
+              updated[updated.length - 1] = {
+                role: 'assistant',
+                text: fullAssistantText
               };
             }
             return updated;
@@ -357,7 +356,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error('Chat error:', err);
       setChatMessages(prev => [
-        ...prev.slice(0, -1), 
+        ...prev.slice(0, -1),
         { role: 'assistant', text: 'Xin lỗi, tôi gặp lỗi kết nối với máy chủ AI. Vui lòng thử lại sau!' }
       ]);
     }
@@ -536,13 +535,13 @@ const App: React.FC = () => {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
               />
-              <Send 
-                size={16} 
-                style={{ 
-                  cursor: isModelLoading ? 'not-allowed' : 'pointer', 
-                  color: isModelLoading ? '#30363D' : '#10B981' 
-                }} 
-                onClick={!isModelLoading ? handleSendMessage : undefined} 
+              <Send
+                size={16}
+                style={{
+                  cursor: isModelLoading ? 'not-allowed' : 'pointer',
+                  color: isModelLoading ? '#30363D' : '#10B981'
+                }}
+                onClick={!isModelLoading ? handleSendMessage : undefined}
               />
             </div>
           </div>
@@ -649,13 +648,13 @@ const styles: Record<string, React.CSSProperties> = {
   sidebar: { background: '#161B22', borderRight: '1px solid #30363D', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 0', gap: '20px' },
   logo: { width: '32px', height: '32px', background: '#10B981', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'black', fontWeight: 'bold', marginBottom: '10px' },
   navItem: { color: '#8B949E', cursor: 'pointer', padding: '10px', borderRadius: '10px', transition: '0.2s' },
-  marketSidebar: { 
-    background: '#161B22', 
-    borderRight: '1px solid #30363D', 
-    display: 'flex', 
+  marketSidebar: {
+    background: '#161B22',
+    borderRight: '1px solid #30363D',
+    display: 'flex',
     flexDirection: 'column',
     height: '100vh',
-    overflow: 'hidden' 
+    overflow: 'hidden'
   },
   chatOverlay: {
     position: 'absolute',
@@ -706,10 +705,10 @@ const styles: Record<string, React.CSSProperties> = {
   footerBranding: { marginTop: '15px', fontSize: '0.65em', color: '#8B949E' },
   chatContainer: { display: 'flex', flexDirection: 'column', height: '100%' },
   chatMessages: { flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' },
-  message: { 
-    padding: '10px 14px', 
-    borderRadius: '12px', 
-    fontSize: '0.85em', 
+  message: {
+    padding: '10px 14px',
+    borderRadius: '12px',
+    fontSize: '0.85em',
     maxWidth: '85%',
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',

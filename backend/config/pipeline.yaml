@@ -21,9 +21,9 @@ guardrails:
   #   ...
 
 embeddings:
-  huggingface_model: BAAI/bge-m3
+  huggingface_model:  Qwen/Qwen3-Embedding-4B #BAAI/bge-m3, Qwen/Qwen3-Embedding-0.6B
   normalize: true
-  device: cuda
+  device: cpu #cuda
 
 cache:
   enabled: true
