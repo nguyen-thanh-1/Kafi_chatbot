@@ -1,16 +1,23 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard, LineChart, Briefcase, History, Settings,
   TrendingUp, Sparkles, Bell, User, Search, MessageSquare, Send
 } from 'lucide-react';
 import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
 
+type PipelineTrace = {
+  input_safety: string;
+  cache_hit: boolean;
+  cache_similarity: number;
+  route: string;
+  output_safety: string;
+};
+
 const App: React.FC = () => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const apiUrl =
     import.meta.env.VITE_API_URL ||
-    (import.meta.env as any).NEXT_PUBLIC_API_URL ||
-    'http://localhost:8000';
+    '';
   const [activeTab, setActiveTab] = useState('Hàng hóa');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [activeAsset, setActiveAsset] = useState('GOLD');
@@ -26,15 +33,28 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState([
     { role: 'assistant', text: 'Chào bạn! Tôi là AI hỗ trợ giao dịch. Bạn cần giúp gì hôm nay?' }
   ]);
-  
+
+  const [pipelineTrace, setPipelineTrace] = useState<PipelineTrace | null>(null);
+  const [isTraceLoading, setIsTraceLoading] = useState(false);
+
   // Model state
-  const [models, setModels] = useState<{id: string, name: string}[]>([]);
+  const [models, setModels] = useState<{ id: string, name: string }[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [isModelLoading, setIsModelLoading] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const badgeStyle = (borderColor: string): React.CSSProperties => ({
+    border: `1px solid ${borderColor}`,
+    color: borderColor,
+    borderRadius: 999,
+    padding: '2px 8px',
+    fontSize: '0.7em',
+    fontWeight: 600,
+    background: 'rgba(255,255,255,0.02)',
+  });
 
   useEffect(() => {
     if (sidebarView === 'ai') {
@@ -89,7 +109,7 @@ const App: React.FC = () => {
           fetch(`${apiUrl}/api/chat/models`),
           fetch(`${apiUrl}/api/chat/current-model`)
         ]);
-        
+
         if (modelsRes.ok && currentModelRes.ok) {
           const modelsData = await modelsRes.json();
           const currentData = await currentModelRes.json();
@@ -105,22 +125,22 @@ const App: React.FC = () => {
 
   const handleModelChange = async (modelId: string) => {
     if (modelId === selectedModel || isModelLoading) return;
-    
+
     setIsModelLoading(true);
     setSelectedModel(modelId);
-    
+
     try {
       const response = await fetch(`${apiUrl}/api/chat/model`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model_id: modelId })
       });
-      
+
       if (!response.ok) throw new Error('Failed to switch model');
-      
-      setChatMessages(prev => [...prev, { 
-        role: 'assistant', 
-        text: `Đã chuyển sang mô hình: ${models.find(m => m.id === modelId)?.name || modelId}` 
+
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        text: `Đã chuyển sang mô hình: ${models.find(m => m.id === modelId)?.name || modelId}`
       }]);
     } catch (err) {
       console.error("Model switch error:", err);
@@ -130,6 +150,20 @@ const App: React.FC = () => {
         .then(data => setSelectedModel(data.model_id));
     } finally {
       setIsModelLoading(false);
+    }
+  };
+
+  const fetchTrace = async () => {
+    setIsTraceLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/chat/trace`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && Object.keys(data).length > 0) setPipelineTrace(data);
+    } catch (err) {
+      console.error("Failed to fetch trace:", err);
+    } finally {
+      setIsTraceLoading(false);
     }
   };
 
@@ -308,19 +342,21 @@ const App: React.FC = () => {
           setChatMessages(prev => {
             const updated = [...prev];
             if (updated.length > 0) {
-              updated[updated.length - 1] = { 
-                role: 'assistant', 
-                text: fullAssistantText 
+              updated[updated.length - 1] = {
+                role: 'assistant',
+                text: fullAssistantText
               };
             }
             return updated;
           });
         }
       }
+
+      await fetchTrace();
     } catch (err) {
       console.error('Chat error:', err);
       setChatMessages(prev => [
-        ...prev.slice(0, -1), 
+        ...prev.slice(0, -1),
         { role: 'assistant', text: 'Xin lỗi, tôi gặp lỗi kết nối với máy chủ AI. Vui lòng thử lại sau!' }
       ]);
     }
@@ -426,6 +462,57 @@ const App: React.FC = () => {
                 )}
               </select>
             </div>
+
+            <div style={{
+              padding: '10px 20px',
+              borderBottom: '1px solid #30363D',
+              background: '#0D1117'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div style={{ fontSize: '0.75em', color: '#8B949E' }}>
+                  Pipeline trace {isTraceLoading ? '(loading...)' : ''}
+                </div>
+                <button
+                  onClick={fetchTrace}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #30363D',
+                    color: '#10B981',
+                    borderRadius: 8,
+                    padding: '4px 8px',
+                    fontSize: '0.7em',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {pipelineTrace ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  <span style={badgeStyle(pipelineTrace.cache_hit ? '#10B981' : '#8B949E')}>
+                    cache={pipelineTrace.cache_hit ? 'HIT' : 'MISS'}
+                  </span>
+                  <span style={badgeStyle('#8B949E')}>
+                    sim={Number(pipelineTrace.cache_similarity || 0).toFixed(3)}
+                  </span>
+                  <span style={badgeStyle('#10B981')}>
+                    route={pipelineTrace.route}
+                  </span>
+                  <span style={badgeStyle((pipelineTrace.input_safety || '').includes('UNSAFE') ? '#EF4444' : '#10B981')}>
+                    in={pipelineTrace.input_safety}
+                  </span>
+                  <span style={badgeStyle((pipelineTrace.output_safety || '').includes('UNSAFE') ? '#EF4444' : '#10B981')}>
+                    out={pipelineTrace.output_safety}
+                  </span>
+                </div>
+              ) : (
+                <div style={{ marginTop: 8, fontSize: '0.75em', color: '#8B949E' }}>
+                  Chưa có trace (hãy gửi 1 tin nhắn).
+                </div>
+              )}
+            </div>
+
             <div style={styles.chatMessages}>
               {chatMessages.map((msg, i) => (
                 <div key={i} style={{
@@ -448,13 +535,13 @@ const App: React.FC = () => {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
               />
-              <Send 
-                size={16} 
-                style={{ 
-                  cursor: isModelLoading ? 'not-allowed' : 'pointer', 
-                  color: isModelLoading ? '#30363D' : '#10B981' 
-                }} 
-                onClick={!isModelLoading ? handleSendMessage : undefined} 
+              <Send
+                size={16}
+                style={{
+                  cursor: isModelLoading ? 'not-allowed' : 'pointer',
+                  color: isModelLoading ? '#30363D' : '#10B981'
+                }}
+                onClick={!isModelLoading ? handleSendMessage : undefined}
               />
             </div>
           </div>
@@ -561,13 +648,13 @@ const styles: Record<string, React.CSSProperties> = {
   sidebar: { background: '#161B22', borderRight: '1px solid #30363D', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 0', gap: '20px' },
   logo: { width: '32px', height: '32px', background: '#10B981', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'black', fontWeight: 'bold', marginBottom: '10px' },
   navItem: { color: '#8B949E', cursor: 'pointer', padding: '10px', borderRadius: '10px', transition: '0.2s' },
-  marketSidebar: { 
-    background: '#161B22', 
-    borderRight: '1px solid #30363D', 
-    display: 'flex', 
+  marketSidebar: {
+    background: '#161B22',
+    borderRight: '1px solid #30363D',
+    display: 'flex',
     flexDirection: 'column',
     height: '100vh',
-    overflow: 'hidden' 
+    overflow: 'hidden'
   },
   chatOverlay: {
     position: 'absolute',
@@ -618,10 +705,10 @@ const styles: Record<string, React.CSSProperties> = {
   footerBranding: { marginTop: '15px', fontSize: '0.65em', color: '#8B949E' },
   chatContainer: { display: 'flex', flexDirection: 'column', height: '100%' },
   chatMessages: { flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' },
-  message: { 
-    padding: '10px 14px', 
-    borderRadius: '12px', 
-    fontSize: '0.85em', 
+  message: {
+    padding: '10px 14px',
+    borderRadius: '12px',
+    fontSize: '0.85em',
     maxWidth: '85%',
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',

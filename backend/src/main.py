@@ -3,6 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from threading import Thread
 from src.routers import chatbot, market_data
 from src.utils.llm import get_llm
+from src.pipeline.chat_pipeline import get_chat_pipeline
+from src.utils.logger import logger
+from src.utils.app_config import AppConfig
 import uvicorn
 
 app = FastAPI(title="Kafi Chatbot API", version="0.1.0")
@@ -26,12 +29,20 @@ def read_root():
 
 @app.on_event("startup")
 def _preload_default_model():
-    # Load the default model in the background so the API becomes responsive immediately.
+    # Preload optional pipeline models in the background so the API becomes responsive immediately.
     def _load():
         try:
-            get_llm().ensure_loaded()
+            pipeline = get_chat_pipeline()
+            pipeline.warmup()
+
+            # Preload main LLM only if configured (can be very heavy on VRAM).
+            startup_cfg = (AppConfig.get_pipeline_config().get("startup", {}) or {})
+            if bool(startup_cfg.get("preload_main_llm", False)):
+                logger.info("[startup] preloading main LLM (default model) ...")
+                get_llm().ensure_loaded()
+                logger.info("[startup] main LLM ready.")
         except Exception:
-            pass
+            logger.exception("[startup] preload failed")
 
     Thread(target=_load, daemon=True).start()
 
