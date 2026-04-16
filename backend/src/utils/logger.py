@@ -57,3 +57,26 @@ def log_delegation(from_agent: str, to_agent: str, question: str):
     console.print(
         f"\n[bold yellow]{from_agent} -> {to_agent}[/bold yellow]: {question[:80]}...\n"
     )
+
+
+def log_llm_metrics(
+    *,
+    model_id: str,
+    ttft_s: float | None,
+    total_s: float | None,
+    output_tokens: int | None,
+    output_tokens_per_s: float | None,
+    aborted: bool = False,
+):
+    """Logs per-response LLM performance metrics (terminal only)."""
+    table = Table(title="LLM Metrics", show_header=False, border_style="magenta")
+    table.add_row("Model", str(model_id))
+    table.add_row("TTFT", f"{ttft_s:.3f}s" if ttft_s is not None else "N/A")
+    table.add_row("Total", f"{total_s:.3f}s" if total_s is not None else "N/A")
+    table.add_row("Output tokens", str(output_tokens) if output_tokens is not None else "N/A")
+    table.add_row(
+        "Tokens/s",
+        f"{output_tokens_per_s:.2f}" if output_tokens_per_s is not None else "N/A",
+    )
+    table.add_row("Aborted", "yes" if aborted else "no")
+    console.print(table)
