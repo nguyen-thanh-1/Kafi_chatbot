@@ -4,17 +4,214 @@ import {
   TrendingUp, Sparkles, Bell, User, Search, MessageSquare, Send
 } from 'lucide-react';
 import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
-type PipelineTrace = {
-  input_safety: string;
-  cache_hit: boolean;
-  cache_similarity: number;
-  route: string;
-  output_safety: string;
+
+
+type MarkdownTagProps<T> = T & { children?: React.ReactNode };
+type CodeProps = React.HTMLAttributes<HTMLElement> & { inline?: boolean; className?: string; children?: React.ReactNode };
+
+const markdownComponents = {
+  p: (props: MarkdownTagProps<React.HTMLAttributes<HTMLParagraphElement>>) => <p style={{ margin: '0.4em 0' }} {...props} />,
+  ul: (props: MarkdownTagProps<React.HTMLAttributes<HTMLUListElement>>) => <ul style={{ margin: '0.4em 0', paddingLeft: '1.2em' }} {...props} />,
+  ol: (props: MarkdownTagProps<React.HTMLAttributes<HTMLOListElement>>) => <ol style={{ margin: '0.4em 0', paddingLeft: '1.2em' }} {...props} />,
+  li: (props: MarkdownTagProps<React.LiHTMLAttributes<HTMLLIElement>>) => <li style={{ margin: '0.15em 0' }} {...props} />,
+  a: (props: MarkdownTagProps<React.AnchorHTMLAttributes<HTMLAnchorElement>>) => (
+    <a
+      {...props}
+      target="_blank"
+      rel="noreferrer noopener"
+      style={{ color: '#10B981', textDecoration: 'underline' }}
+    />
+  ),
+  code: ({ inline, children, ...props }: CodeProps) => {
+    if (inline) {
+      return (
+        <code
+          {...props}
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(48,54,61,0.6)',
+            padding: '0 0.35em',
+            borderRadius: 6,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+            fontSize: '0.92em',
+          }}
+        >
+          {children}
+        </code>
+      );
+    }
+
+    return (
+      <pre
+        style={{
+          margin: '0.6em 0',
+          padding: '0.8em 0.9em',
+          background: '#0D1117',
+          border: '1px solid #30363D',
+          borderRadius: 10,
+          overflowX: 'auto',
+        }}
+      >
+        <code
+          {...props}
+          style={{
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+            fontSize: '0.9em',
+            lineHeight: 1.55,
+          }}
+        >
+          {children}
+        </code>
+      </pre>
+    );
+  },
+  table: (props: MarkdownTagProps<React.TableHTMLAttributes<HTMLTableElement>>) => (
+    <div style={{ overflowX: 'auto', margin: '0.6em 0' }}>
+      <table
+        {...props}
+        style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          border: '1px solid #30363D',
+          borderRadius: 10,
+          overflow: 'hidden',
+        }}
+      />
+    </div>
+  ),
+  th: (props: MarkdownTagProps<React.ThHTMLAttributes<HTMLTableCellElement>>) => (
+    <th
+      {...props}
+      style={{
+        textAlign: 'left',
+        padding: '8px 10px',
+        borderBottom: '1px solid #30363D',
+        background: 'rgba(255,255,255,0.04)',
+        fontWeight: 700,
+      }}
+    />
+  ),
+  td: (props: MarkdownTagProps<React.TdHTMLAttributes<HTMLTableCellElement>>) => (
+    <td
+      {...props}
+      style={{
+        padding: '8px 10px',
+        borderBottom: '1px solid rgba(48,54,61,0.6)',
+        verticalAlign: 'top',
+      }}
+    />
+  ),
+} as const;
+
+const splitPipeRow = (line: string) => {
+  const t = line.trim();
+  if (!t.includes('|')) return null;
+
+  // Support both `| a | b |` and `a | b` styles.
+  const rawParts = t.split('|').map(s => s.trim());
+  const hasEdgePipes = t.startsWith('|') && t.endsWith('|');
+  const cells = hasEdgePipes ? rawParts.slice(1, -1) : rawParts;
+  if (cells.length < 2) return null;
+  return { cells, hasEdgePipes };
+};
+
+const isSeparatorCells = (cells: string[]) =>
+  cells.length >= 2 && cells.every(c => /^:?-{3,}:?$/.test(c.trim()));
+
+const toPipeLine = (cells: string[]) => `| ${cells.map(c => c.trim()).join(' | ')} |`;
+
+const normalizeMarkdownTables = (input: string) => {
+  const lines = input.split(/\r?\n/);
+  const out: string[] = [];
+
+  const isTableRowLine = (line: string) => {
+    const row = splitPipeRow(line);
+    return !!row && !isSeparatorCells(row.cells);
+  };
+
+  const isSeparatorLine = (line: string) => {
+    const row = splitPipeRow(line);
+    return !!row && isSeparatorCells(row.cells);
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (!isTableRowLine(line)) {
+      out.push(line);
+      continue;
+    }
+
+    const rows: string[][] = [];
+    let hasSeparator = false;
+    let separatorIndex = -1;
+
+    let j = i;
+    while (j < lines.length) {
+      const l = lines[j];
+      if (isTableRowLine(l)) {
+        const parsed = splitPipeRow(l);
+        if (parsed) rows.push(parsed.cells);
+        j++;
+        continue;
+      }
+      if (isSeparatorLine(l)) {
+        hasSeparator = true;
+        if (separatorIndex === -1) separatorIndex = rows.length;
+        j++;
+        continue;
+      }
+      break;
+    }
+
+    // If there was no explicit separator, add one.
+    // - 1 row: treat it as body row, add an empty header.
+    // - >=2 rows: treat first row as header.
+    if (!hasSeparator) {
+      const cols = rows[0]?.length ?? 0;
+      if (cols >= 2) {
+        if (rows.length === 1) {
+          out.push(toPipeLine(Array.from({ length: cols }, () => '')));
+          out.push(toPipeLine(Array.from({ length: cols }, () => '---')));
+          out.push(toPipeLine(rows[0]));
+        } else {
+          out.push(toPipeLine(rows[0]));
+          out.push(toPipeLine(Array.from({ length: cols }, () => '---')));
+          for (const r of rows.slice(1)) out.push(toPipeLine(r));
+        }
+      } else {
+        out.push(line);
+      }
+      i = j - 1;
+      continue;
+    }
+
+    // With a separator present, normalize to GFM table format and drop any "separator-like" body rows
+    // (common when the model outputs both a separator row and an extra `-----` row).
+    const header = rows[0] ?? [];
+    const cols = header.length;
+    out.push(toPipeLine(header));
+    out.push(toPipeLine(Array.from({ length: cols }, () => '---')));
+
+    // Body rows start at index 1 in `rows` when the markdown is well-formed.
+    // If the model inserted extra separator-like rows, remove them.
+    for (const r of rows.slice(1)) {
+      if (isSeparatorCells(r)) continue;
+      out.push(toPipeLine(r));
+    }
+
+    i = j - 1;
+  }
+
+  return out.join('\n');
 };
 
 const App: React.FC = () => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chatMessagesRef = useRef<HTMLDivElement>(null);
   const apiUrl =
     import.meta.env.VITE_API_URL ||
     '';
@@ -22,45 +219,57 @@ const App: React.FC = () => {
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [activeAsset, setActiveAsset] = useState('GOLD');
   const [sidebarView, setSidebarView] = useState<'market' | 'ai'>('market');
+  const NAV_WIDTH = 60;
+  const MARKET_WIDTH = 280;
+  const ORDER_MIN_WIDTH = 220;
+  const ORDER_MAX_WIDTH = 300;
   const CHAT_MIN_WIDTH = 280;
   const [chatWidth, setChatWidth] = useState(CHAT_MIN_WIDTH);
   const [isChatResizing, setIsChatResizing] = useState(false);
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(CHAT_MIN_WIDTH);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const forceChatScrollRef = useRef(false);
+  const chatScrollRafRef = useRef<number | null>(null);
   const [currentPrice, setCurrentPrice] = useState(2154.30);
   const [priceChange, setPriceChange] = useState(-0.24);
   const [chatMessages, setChatMessages] = useState([
     { role: 'assistant', text: 'Chào bạn! Tôi là AI hỗ trợ giao dịch. Bạn cần giúp gì hôm nay?' }
   ]);
 
-  const [pipelineTrace, setPipelineTrace] = useState<PipelineTrace | null>(null);
-  const [isTraceLoading, setIsTraceLoading] = useState(false);
+
 
   // Model state
   const [models, setModels] = useState<{ id: string, name: string }[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [isModelLoading, setIsModelLoading] = useState(false);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollChatToBottom = (force = false) => {
+    const el = chatMessagesRef.current;
+    if (!el) return;
+
+    if (chatScrollRafRef.current) cancelAnimationFrame(chatScrollRafRef.current);
+
+    chatScrollRafRef.current = requestAnimationFrame(() => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (!force && distanceFromBottom > 80) return;
+      el.scrollTop = el.scrollHeight;
+    });
   };
 
-  const badgeStyle = (borderColor: string): React.CSSProperties => ({
-    border: `1px solid ${borderColor}`,
-    color: borderColor,
-    borderRadius: 999,
-    padding: '2px 8px',
-    fontSize: '0.7em',
-    fontWeight: 600,
-    background: 'rgba(255,255,255,0.02)',
-  });
+
 
   useEffect(() => {
     if (sidebarView === 'ai') {
-      scrollToBottom();
+      scrollChatToBottom(forceChatScrollRef.current);
+      forceChatScrollRef.current = false;
     }
   }, [chatMessages, sidebarView]);
+
+  useEffect(() => {
+    return () => {
+      if (chatScrollRafRef.current) cancelAnimationFrame(chatScrollRafRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     // Grid column changes don't always trigger a window resize event; notify the chart.
@@ -153,19 +362,7 @@ const App: React.FC = () => {
     }
   };
 
-  const fetchTrace = async () => {
-    setIsTraceLoading(true);
-    try {
-      const res = await fetch(`${apiUrl}/api/chat/trace`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data && Object.keys(data).length > 0) setPipelineTrace(data);
-    } catch (err) {
-      console.error("Failed to fetch trace:", err);
-    } finally {
-      setIsTraceLoading(false);
-    }
-  };
+
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -304,6 +501,7 @@ const App: React.FC = () => {
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
+    forceChatScrollRef.current = true;
     const userMessage = { role: 'user', text: inputValue };
     const newMessages = [...chatMessages, userMessage];
     setChatMessages(newMessages);
@@ -352,7 +550,7 @@ const App: React.FC = () => {
         }
       }
 
-      await fetchTrace();
+
     } catch (err) {
       console.error('Chat error:', err);
       setChatMessages(prev => [
@@ -366,9 +564,11 @@ const App: React.FC = () => {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: sidebarView === 'ai' ? '60px 0px 1fr 300px' : '60px 280px 1fr 300px',
+        gridTemplateColumns: sidebarView === 'ai'
+          ? `${NAV_WIDTH}px 0px minmax(0, 1fr) minmax(${ORDER_MIN_WIDTH}px, ${ORDER_MAX_WIDTH}px)`
+          : `${NAV_WIDTH}px minmax(240px, ${MARKET_WIDTH}px) minmax(0, 1fr) minmax(${ORDER_MIN_WIDTH}px, ${ORDER_MAX_WIDTH}px)`,
         height: '100vh',
-        width: '100vw',
+        width: '100%',
         position: 'relative',
         userSelect: isChatResizing ? 'none' : 'auto',
         cursor: isChatResizing ? 'ew-resize' : 'auto'
@@ -389,7 +589,7 @@ const App: React.FC = () => {
       </nav>
 
       {/* Second Column: Market or AI Chat */}
-      <section style={{ ...styles.marketSidebar, width: sidebarView === 'ai' ? 0 : 280, overflow: 'hidden' }}>
+      <section style={styles.marketSidebar}>
         {sidebarView === 'market' && (
           <>
             <div style={styles.marketHeader}>Thị trường</div>
@@ -425,7 +625,7 @@ const App: React.FC = () => {
       </section>
 
       {sidebarView === 'ai' && (
-        <div style={{ ...styles.chatOverlay, width: chatWidth }}>
+        <div style={{ ...styles.chatOverlay, width: chatWidth, left: NAV_WIDTH }}>
           <div
             style={styles.chatResizeHandle}
             onMouseDown={(e) => {
@@ -463,67 +663,24 @@ const App: React.FC = () => {
               </select>
             </div>
 
-            <div style={{
-              padding: '10px 20px',
-              borderBottom: '1px solid #30363D',
-              background: '#0D1117'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <div style={{ fontSize: '0.75em', color: '#8B949E' }}>
-                  Pipeline trace {isTraceLoading ? '(loading...)' : ''}
-                </div>
-                <button
-                  onClick={fetchTrace}
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid #30363D',
-                    color: '#10B981',
-                    borderRadius: 8,
-                    padding: '4px 8px',
-                    fontSize: '0.7em',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Refresh
-                </button>
-              </div>
 
-              {pipelineTrace ? (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                  <span style={badgeStyle(pipelineTrace.cache_hit ? '#10B981' : '#8B949E')}>
-                    cache={pipelineTrace.cache_hit ? 'HIT' : 'MISS'}
-                  </span>
-                  <span style={badgeStyle('#8B949E')}>
-                    sim={Number(pipelineTrace.cache_similarity || 0).toFixed(3)}
-                  </span>
-                  <span style={badgeStyle('#10B981')}>
-                    route={pipelineTrace.route}
-                  </span>
-                  <span style={badgeStyle((pipelineTrace.input_safety || '').includes('UNSAFE') ? '#EF4444' : '#10B981')}>
-                    in={pipelineTrace.input_safety}
-                  </span>
-                  <span style={badgeStyle((pipelineTrace.output_safety || '').includes('UNSAFE') ? '#EF4444' : '#10B981')}>
-                    out={pipelineTrace.output_safety}
-                  </span>
-                </div>
-              ) : (
-                <div style={{ marginTop: 8, fontSize: '0.75em', color: '#8B949E' }}>
-                  Chưa có trace (hãy gửi 1 tin nhắn).
-                </div>
-              )}
-            </div>
 
-            <div style={styles.chatMessages}>
+            <div ref={chatMessagesRef} style={styles.chatMessages}>
               {chatMessages.map((msg, i) => (
                 <div key={i} style={{
                   ...styles.message,
                   alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
                   background: msg.role === 'user' ? 'rgba(16, 185, 129, 0.2)' : '#0D1117'
                 }}>
-                  {msg.text}
+                  {msg.role === 'assistant' ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                      {normalizeMarkdownTables(msg.text)}
+                    </ReactMarkdown>
+                  ) : (
+                    <span style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</span>
+                  )}
                 </div>
               ))}
-              <div ref={messagesEndRef} />
             </div>
             <div style={styles.chatInput}>
               <input
@@ -570,7 +727,7 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <div ref={chartContainerRef} style={{ flex: 1, position: 'relative', background: '#0A0E14' }}>
+        <div ref={chartContainerRef} style={{ flex: 1, minWidth: 0, position: 'relative', background: '#0A0E14', overflow: 'hidden' }}>
           {/* Chart container */}
         </div>
       </main>
@@ -654,7 +811,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     height: '100vh',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    minWidth: 0
   },
   chatOverlay: {
     position: 'absolute',
@@ -670,10 +828,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   chatResizeHandle: {
     position: 'absolute',
-    right: 0,
+    right: -10,
     top: 0,
     bottom: 0,
-    width: 6,
+    width: 12,
     cursor: 'ew-resize',
     background: 'transparent'
   },
@@ -686,14 +844,14 @@ const styles: Record<string, React.CSSProperties> = {
   ghostInput: { background: 'transparent', border: 'none', color: 'white', outline: 'none', width: '100%', fontSize: '0.9em' },
   marketItems: { flex: 1, overflowY: 'auto' },
   marketItem: { display: 'flex', justifyContent: 'space-between', padding: '12px 20px', cursor: 'pointer', borderBottom: '1px solid rgba(48, 54, 61, 0.3)' },
-  mainContent: { display: 'flex', flexDirection: 'column' },
+  mainContent: { display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' },
   topNav: { height: '60px', background: '#161B22', borderBottom: '1px solid #30363D', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px' },
   pairInfo: { display: 'flex', alignItems: 'center', gap: '12px' },
   btnAi: { background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', border: 'none', padding: '5px 12px', borderRadius: '20px', color: 'white', fontSize: '0.75em', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.2)' },
   accountInfo: { display: 'flex', alignItems: 'center', gap: '15px' },
   balanceBox: { background: 'rgba(255, 255, 255, 0.05)', padding: '5px 12px', borderRadius: '8px' },
   iconBtn: { color: '#8B949E', cursor: 'pointer' },
-  orderPanel: { background: '#161B22', borderLeft: '1px solid #30363D', padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' },
+  orderPanel: { background: '#161B22', borderLeft: '1px solid #30363D', padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px', minWidth: 0, overflow: 'hidden' },
   buySellToggle: { display: 'grid', gridTemplateColumns: '1fr 1fr', background: '#0D1117', padding: '4px', borderRadius: '10px' },
   toggleBtn: { background: 'transparent', border: 'none', color: '#8B949E', padding: '10px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' },
   toggleBtnBuy: { background: '#10B981', color: 'black' },
@@ -710,7 +868,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '12px',
     fontSize: '0.85em',
     maxWidth: '85%',
-    whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
     lineHeight: '1.5'
   },

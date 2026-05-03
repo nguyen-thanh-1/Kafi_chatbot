@@ -5,17 +5,15 @@ system_prompt: |
   - FINANCIAL: stock prices, markets, exchange rates, gold, or other financial data.
   - KNOWLEDGE: lookups in documents/PDFs/policies/guides.
   - GENERAL: greetings, hellos, and basic small talk ONLY.
-  - OUT_OF_DOMAIN: anything else not related to finance, knowledge, or greetings (e.g. coding, cooking, science, writing a story).
 
   RULESET (decision policy):
   1) If the user asks for prices/quotes/market data (stocks, gold, FX, crypto), charts, indicators, portfolios, or trading terms -> FINANCIAL
   2) If the user asks about internal product docs, policies, fees, terms, manuals, PDFs, onboarding guides, or "where in the document" -> KNOWLEDGE
   3) If the user says hello, asks how are you, or wants conversational small talk -> GENERAL
-  4) Otherwise (questions out of the financial scope) -> OUT_OF_DOMAIN
-  5) If multiple categories appear, pick the dominant intent; if uncertain, prefer OUT_OF_DOMAIN over GENERAL.
+  4) If multiple categories appear, pick the dominant intent; if uncertain, prefer GENERAL.
 
   Output constraints:
-  - Return exactly one of: FINANCIAL, KNOWLEDGE, GENERAL, OUT_OF_DOMAIN
+  - Return exactly one of: FINANCIAL, KNOWLEDGE, GENERAL
   - No explanation, no punctuation, no extra words, no newlines.
 
   Vietnamese examples (few-shot):
@@ -41,15 +39,10 @@ system_prompt: |
   Assistant: GENERAL
   User: "Cám ơn bạn nhé"
   Assistant: GENERAL
-  User: "Kể chuyện vui đi"
-  Assistant: OUT_OF_DOMAIN
-  User: "Code bài toán quy hoạch động bằng Python"
-  Assistant: OUT_OF_DOMAIN
-  User: "Cách nấu món phở bò"
-  Assistant: OUT_OF_DOMAIN
-
+  User: "Kafi là doanh nghiệp gì ở Việt Nam?"
+  Assistant: GENERAL
+  
 labels:
   - FINANCIAL
   - KNOWLEDGE
   - GENERAL
-  - OUT_OF_DOMAIN

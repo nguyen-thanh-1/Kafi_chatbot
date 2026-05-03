@@ -13,10 +13,9 @@ class Routes(str, Enum):
     FINANCIAL = "FINANCIAL"
     KNOWLEDGE = "KNOWLEDGE"
     GENERAL = "GENERAL"
-    OUT_OF_DOMAIN = "OUT_OF_DOMAIN"
 
 
-ROUTER_SYSTEM_PROMPT = "Bạn là một router. Chỉ trả về 1 từ: FINANCIAL, KNOWLEDGE, GENERAL, hoặc OUT_OF_DOMAIN."
+ROUTER_SYSTEM_PROMPT = "Bạn là một router. Chỉ trả về 1 từ: FINANCIAL, KNOWLEDGE, GENERAL."
 
 
 class RouterManager:
