@@ -18,6 +18,8 @@ dependencies = [
     "pandas",
     "rich",
     "pillow",
+    "numpy",
+    "sentence-transformers>=5.2.2",
 ]
 
 [[tool.uv.index]]

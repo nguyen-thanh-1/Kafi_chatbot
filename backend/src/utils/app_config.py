@@ -26,6 +26,18 @@ class AppConfig:
     def get_agents_config(cls):
         return cls.load_yaml("agents.yaml")
 
+    @classmethod
+    def get_pipeline_config(cls):
+        return cls.load_yaml("pipeline.yaml") or {}
+
+    @classmethod
+    def get_router_config(cls):
+        return cls.load_yaml("router.yaml") or {}
+
+    @classmethod
+    def get_guardrails_config(cls):
+        return cls.load_yaml("guardrails.yaml") or {}
+
     # Access environment variables easily
     LITELLM_BASE_URL = os.getenv("LITELLM_BASE_URL")
     LITELLM_API_KEY = os.getenv("LITELLM_API_KEY")

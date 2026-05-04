@@ -1,20 +1,26 @@
 import os
 import gc
+import time
 from threading import Lock, Thread
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     AutoProcessor,
-    AutoModelForMultimodalLM,
     BitsAndBytesConfig,
     TextIteratorStreamer,
 )
 import torch
 import warnings
 from src.utils.app_config import AppConfig
-from src.utils.logger import log_user_input, log_agent_response
+from src.utils.logger import log_user_input, log_agent_response, log_llm_metrics
 
 warnings.filterwarnings('ignore')
+
+try:
+    # Newer Transformers versions provide this auto-class for multimodal models.
+    from transformers import AutoModelForMultimodalLM  # type: ignore
+except Exception:
+    AutoModelForMultimodalLM = None
 
 class LLMManager:
     def __init__(self):
@@ -121,6 +127,12 @@ class LLMManager:
                             self.processor = None
                             self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
 
+                        if AutoModelForMultimodalLM is None:
+                            raise RuntimeError(
+                                "AutoModelForMultimodalLM is not available in your transformers version. "
+                                "Please upgrade transformers or use a text-only model_kind."
+                            )
+
                         self.model = AutoModelForMultimodalLM.from_pretrained(
                             model_name,
                             quantization_config=bnb_config,
@@ -168,6 +180,19 @@ class LLMManager:
             return bad_words
         except Exception:
             return None
+
+    def _count_output_tokens(self, text: str) -> int | None:
+        tok = self.tokenizer
+        if tok is None:
+            return None
+        try:
+            # Use tokenizer-native tokenization for accuracy per model.
+            ids = tok(text, add_special_tokens=False).get("input_ids")
+            if isinstance(ids, list):
+                return len(ids)
+        except Exception:
+            return None
+        return None
 
     def generate_response(self, user_input, history=[]):
         if not self.ensure_loaded():
@@ -241,6 +266,10 @@ class LLMManager:
         if self.bad_words_ids:
             generation_kwargs['bad_words_ids'] = self.bad_words_ids
 
+        t_start = time.perf_counter()
+        t_first_token: float | None = None
+        aborted = False
+
         thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
         thread.start()
 
@@ -256,42 +285,75 @@ class LLMManager:
             "thought",
         )
 
-        if not strip_thought:
-            for new_text in streamer:
-                full_response += new_text
-                yield new_text
-        else:
-            pending = ""
-            tail_keep = 80
+        try:
+            if not strip_thought:
+                for new_text in streamer:
+                    if t_first_token is None:
+                        t_first_token = time.perf_counter()
+                    full_response += new_text
+                    yield new_text
+            else:
+                pending = ""
+                tail_keep = 80
 
-            def find_marker(s: str) -> int:
-                hits = [s.find(m) for m in stop_markers]
-                hits = [h for h in hits if h != -1]
-                return min(hits) if hits else -1
+                def find_marker(s: str) -> int:
+                    hits = [s.find(m) for m in stop_markers]
+                    hits = [h for h in hits if h != -1]
+                    return min(hits) if hits else -1
 
-            for new_text in streamer:
-                pending += new_text
-                idx = find_marker(pending)
-                if idx != -1:
-                    safe = pending[:idx].rstrip()
-                    if safe:
-                        full_response += safe
-                        yield safe
-                    pending = ""
-                    break
+                for new_text in streamer:
+                    if t_first_token is None:
+                        t_first_token = time.perf_counter()
+                    pending += new_text
+                    idx = find_marker(pending)
+                    if idx != -1:
+                        safe = pending[:idx].rstrip()
+                        if safe:
+                            full_response += safe
+                            yield safe
+                        pending = ""
+                        break
 
-                if len(pending) > tail_keep:
-                    emit = pending[:-tail_keep]
-                    pending = pending[-tail_keep:]
-                    if emit:
-                        full_response += emit
-                        yield emit
+                    if len(pending) > tail_keep:
+                        emit = pending[:-tail_keep]
+                        pending = pending[-tail_keep:]
+                        if emit:
+                            full_response += emit
+                            yield emit
 
-            if pending.strip():
-                full_response += pending
-                yield pending
-        
-        log_agent_response(f"Assistant ({self.current_model_id})", full_response)
+                if pending.strip():
+                    full_response += pending
+                    yield pending
+        except GeneratorExit:
+            aborted = True
+            raise
+        finally:
+            t_end = time.perf_counter()
+            ttft_s = (t_first_token - t_start) if t_first_token is not None else None
+            total_s = t_end - t_start
+            gen_s = t_end - (t_first_token or t_start)
+            out_tokens = self._count_output_tokens(full_response)
+            tok_s = (out_tokens / gen_s) if (out_tokens is not None and gen_s > 0) else None
+
+            # Terminal-only: metrics for each response.
+            try:
+                log_llm_metrics(
+                    model_id=str(self.current_model_id),
+                    ttft_s=ttft_s,
+                    total_s=total_s,
+                    output_tokens=out_tokens,
+                    output_tokens_per_s=tok_s,
+                    aborted=aborted,
+                )
+            except Exception:
+                # Never break streaming due to metrics logging.
+                pass
+
+            # Keep existing rich panel for the full response (terminal only).
+            try:
+                log_agent_response(f"Assistant ({self.current_model_id})", full_response)
+            except Exception:
+                pass
 
 # Singleton instance
 _llm_instance = None
