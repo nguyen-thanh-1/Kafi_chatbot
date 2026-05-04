@@ -27,7 +27,7 @@ embeddings:
 
 cache:
   enabled: true
-  db_path: .cache/semantic_cache.sqlite
+  db_path: ":memory:"
   similarity_threshold: 0.92
   response_similarity_threshold: 0.97
   max_entries: 5000

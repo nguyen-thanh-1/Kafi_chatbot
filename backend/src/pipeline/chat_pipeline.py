@@ -90,14 +90,14 @@ class ChatPipeline:
 
         return response_text
 
-    def process(self, user_text: str, history: List[Dict[str, str]]) -> Generator[str, None, None]:
+    def process(self, user_text: str, history: List[Dict[str, str]], session_id: Optional[str] = None) -> Generator[str, None, None]:
         # (1) Cache check (semantic) - first
         query_vec = None
         cache_hit: Optional[CacheHit] = None
         if self.cache.enabled:
             try:
                 query_vec = self.embedder.embed([user_text]).vectors[0]
-                cache_hit = self.cache.lookup(user_text, query_vec)
+                cache_hit = self.cache.lookup(user_text, query_vec, session_id=session_id)
             except Exception as e:
                 logger.warning(f"[cache] embedding/lookup failed: {e}")
 
@@ -203,7 +203,7 @@ class ChatPipeline:
                     query_vec = self.embedder.embed([user_text]).vectors[0]
 
                 response_vec = self.embedder.embed([response_text]).vectors[0]
-                dup = self.cache.has_similar_response(response_vec)
+                dup = self.cache.has_similar_response(response_vec, session_id=session_id)
                 if dup is not None:
                     logger.info(f"[cache] DUPLICATE_RESPONSE similarity={dup[0]:.3f} (skip store)")
                 else:
@@ -212,6 +212,7 @@ class ChatPipeline:
                         query_vec,
                         route.value,
                         response_text,
+                        session_id=session_id,
                         response_vec=response_vec,
                     )
                     logger.info("[cache] STORED")

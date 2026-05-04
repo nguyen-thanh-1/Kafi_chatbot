@@ -48,8 +48,14 @@ class SemanticCache:
         self.top_k_scan = int(cfg.get("top_k_scan", 2000))
 
         db_rel = cfg.get("db_path", ".cache/semantic_cache.sqlite")
-        self.db_path = Path(BASE_DIR) / db_rel
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        if db_rel == ":memory:":
+            self.db_path = ":memory:"
+            # For in-memory DB, we MUST keep a connection open to keep the data alive.
+            self._mem_conn = sqlite3.connect(":memory:", check_same_thread=False)
+        else:
+            self.db_path = Path(BASE_DIR) / db_rel
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._mem_conn = None
 
         self._lock = Lock()
         self._dim: Optional[int] = None
@@ -58,18 +64,22 @@ class SemanticCache:
             self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
+        if self.db_path == ":memory:":
+            return self._mem_conn
         con = sqlite3.connect(str(self.db_path))
         con.execute("PRAGMA journal_mode=WAL;")
         con.execute("PRAGMA synchronous=NORMAL;")
         return con
 
     def _init_db(self) -> None:
-        with self._connect() as con:
+        con = self._connect()
+        try:
             con.execute(
                 """
                 CREATE TABLE IF NOT EXISTS semantic_cache (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     created_at REAL NOT NULL,
+                    session_id TEXT,
                     query_text TEXT NOT NULL,
                     query_hash TEXT NOT NULL,
                     route TEXT NOT NULL,
@@ -82,16 +92,23 @@ class SemanticCache:
                 """
             )
             con.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_hash ON semantic_cache(query_hash);")
+            con.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_session ON semantic_cache(session_id);")
             con.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_created ON semantic_cache(created_at);")
 
-            # Migration for older DBs (add response embedding columns if missing)
+            # Migration for older DBs
             cols = [r[1] for r in con.execute("PRAGMA table_info(semantic_cache);").fetchall()]
+            if "session_id" not in cols:
+                con.execute("ALTER TABLE semantic_cache ADD COLUMN session_id TEXT;")
             if "response_embedding_dim" not in cols:
                 con.execute("ALTER TABLE semantic_cache ADD COLUMN response_embedding_dim INTEGER;")
             if "response_embedding" not in cols:
                 con.execute("ALTER TABLE semantic_cache ADD COLUMN response_embedding BLOB;")
+            con.commit()
+        finally:
+            if self.db_path != ":memory:":
+                con.close()
 
-    def lookup(self, query_text: str, query_vec: np.ndarray) -> Optional[CacheHit]:
+    def lookup(self, query_text: str, query_vec: np.ndarray, session_id: Optional[str] = None) -> Optional[CacheHit]:
         if not self.enabled:
             return None
 
@@ -104,18 +121,21 @@ class SemanticCache:
             dim = int(query_vec.size)
             self._dim = self._dim or dim
 
-            with self._connect() as con:
+            con = self._connect()
+            try:
                 # Exact match short-circuit
-                row = con.execute(
-                    """
+                sql = """
                     SELECT created_at, route, response_text
                     FROM semantic_cache
                     WHERE query_hash = ?
-                    ORDER BY id DESC
-                    LIMIT 1
-                    """,
-                    (qh,),
-                ).fetchone()
+                """
+                params = [qh]
+                if session_id:
+                    sql += " AND session_id = ?"
+                    params.append(session_id)
+                
+                sql += " ORDER BY id DESC LIMIT 1"
+                row = con.execute(sql, tuple(params)).fetchone()
                 if row is not None:
                     created_at, route, response_text = row
                     return CacheHit(
@@ -125,15 +145,21 @@ class SemanticCache:
                         created_at=float(created_at),
                     )
 
-                rows = con.execute(
-                    """
+                sql = """
                     SELECT created_at, route, response_text, embedding_dim, query_embedding
                     FROM semantic_cache
-                    ORDER BY id DESC
-                    LIMIT ?
-                    """,
-                    (self.top_k_scan,),
-                ).fetchall()
+                """
+                params = []
+                if session_id:
+                    sql += " WHERE session_id = ?"
+                    params.append(session_id)
+                
+                sql += " ORDER BY id DESC LIMIT ?"
+                params.append(self.top_k_scan)
+                rows = con.execute(sql, tuple(params)).fetchall()
+            finally:
+                if self.db_path != ":memory:":
+                    con.close()
 
             if not rows:
                 return None
@@ -162,7 +188,7 @@ class SemanticCache:
                 return best
             return None
 
-    def has_similar_response(self, response_vec: np.ndarray) -> Optional[Tuple[float, str]]:
+    def has_similar_response(self, response_vec: np.ndarray, session_id: Optional[str] = None) -> Optional[Tuple[float, str]]:
         if not self.enabled:
             return None
 
@@ -172,17 +198,24 @@ class SemanticCache:
 
         with self._lock:
             dim = int(response_vec.size)
-            with self._connect() as con:
-                rows = con.execute(
-                    """
+            con = self._connect()
+            try:
+                sql = """
                     SELECT response_text, response_embedding_dim, response_embedding
                     FROM semantic_cache
                     WHERE response_embedding_dim IS NOT NULL AND response_embedding IS NOT NULL
-                    ORDER BY id DESC
-                    LIMIT ?
-                    """,
-                    (self.top_k_scan,),
-                ).fetchall()
+                """
+                params = []
+                if session_id:
+                    sql += " AND session_id = ?"
+                    params.append(session_id)
+                
+                sql += " ORDER BY id DESC LIMIT ?"
+                params.append(self.top_k_scan)
+                rows = con.execute(sql, tuple(params)).fetchall()
+            finally:
+                if self.db_path != ":memory:":
+                    con.close()
 
             if not rows:
                 return None
@@ -213,6 +246,7 @@ class SemanticCache:
         route: str,
         response_text: str,
         *,
+        session_id: Optional[str] = None,
         response_vec: Optional[np.ndarray] = None,
     ) -> None:
         if not self.enabled:
@@ -237,19 +271,21 @@ class SemanticCache:
                     r_blob = sqlite3.Binary(_to_blob(rv))
 
             try:
-                with self._connect() as con:
+                con = self._connect()
+                try:
                     con.execute(
                         """
                         INSERT INTO semantic_cache (
-                            created_at, query_text, query_hash, route,
+                            created_at, session_id, query_text, query_hash, route,
                             embedding_dim, query_embedding,
                             response_embedding_dim, response_embedding,
                             response_text
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             float(created_at),
+                            session_id,
                             str(query_text),
                             str(qh),
                             str(route),
@@ -273,6 +309,10 @@ class SemanticCache:
                         """,
                         (self.max_entries,),
                     )
+                    con.commit()
+                finally:
+                    if self.db_path != ":memory:":
+                        con.close()
             except Exception as e:
                 logger.warning(f"[cache] store failed: {e}")
 

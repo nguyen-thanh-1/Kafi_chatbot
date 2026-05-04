@@ -55,7 +55,7 @@ async def chat_endpoint(request: ChatRequest):
     def generate():
         full_response = ""
         try:
-            for chunk in pipeline.process(request.message, history):
+            for chunk in pipeline.process(request.message, history, session_id=request.session_id):
                 full_response += chunk
                 yield chunk
 
