@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard, LineChart, Briefcase, History, Settings,
-  TrendingUp, Sparkles, Bell, User, Search, MessageSquare, Send
+  TrendingUp, Sparkles, Bell, User, Search, MessageSquare, Send,
+  Database, Trash2, FileText, CheckCircle2, AlertCircle, Loader2, Upload
 } from 'lucide-react';
 import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
 import ReactMarkdown from 'react-markdown';
@@ -218,7 +219,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Hàng hóa');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [activeAsset, setActiveAsset] = useState('GOLD');
-  const [sidebarView, setSidebarView] = useState<'market' | 'ai'>('market');
+  const [sidebarView, setSidebarView] = useState<'market' | 'ai' | 'knowledge'>('market');
   const NAV_WIDTH = 60;
   const MARKET_WIDTH = 280;
   const ORDER_MIN_WIDTH = 220;
@@ -242,6 +243,11 @@ const App: React.FC = () => {
   const [models, setModels] = useState<{ id: string, name: string }[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [isModelLoading, setIsModelLoading] = useState(false);
+
+  // Knowledge state
+  const [knowledgeFiles, setKnowledgeFiles] = useState<any[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const scrollChatToBottom = (force = false) => {
     const el = chatMessagesRef.current;
@@ -359,6 +365,83 @@ const App: React.FC = () => {
         .then(data => setSelectedModel(data.model_id));
     } finally {
       setIsModelLoading(false);
+    }
+  };
+
+  const fetchKnowledgeFiles = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/chat/knowledge/files`);
+      if (res.ok) {
+        const data = await res.json();
+        setKnowledgeFiles(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch knowledge files:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (sidebarView === 'knowledge') {
+      fetchKnowledgeFiles();
+      const interval = setInterval(fetchKnowledgeFiles, 10000); // Poll every 10s for status
+      return () => clearInterval(interval);
+    }
+  }, [sidebarView]);
+
+  const uploadFile = async (file: File) => {
+    if (isUploading) return;
+    if (!file.name.endsWith('.pdf')) {
+      alert('Chỉ hỗ trợ file PDF');
+      return;
+    }
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(`${apiUrl}/api/chat/upload-knowledge`, {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        fetchKnowledgeFiles();
+      } else {
+        const err = await res.json();
+        alert(`Lỗi: ${err.detail}`);
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleUploadKnowledge = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadFile(file);
+    e.target.value = '';
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) uploadFile(file);
+  };
+
+  const handleDeleteKnowledgeFile = async (id: number) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa tài liệu này khỏi bộ não AI?")) return;
+
+    try {
+      const res = await fetch(`${apiUrl}/api/chat/knowledge/files/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        fetchKnowledgeFiles();
+      }
+    } catch (err) {
+      console.error("Delete error:", err);
     }
   };
 
@@ -564,7 +647,7 @@ const App: React.FC = () => {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: sidebarView === 'ai'
+        gridTemplateColumns: (sidebarView === 'ai' || sidebarView === 'knowledge')
           ? `${NAV_WIDTH}px 0px minmax(0, 1fr) minmax(${ORDER_MIN_WIDTH}px, ${ORDER_MAX_WIDTH}px)`
           : `${NAV_WIDTH}px minmax(240px, ${MARKET_WIDTH}px) minmax(0, 1fr) minmax(${ORDER_MIN_WIDTH}px, ${ORDER_MAX_WIDTH}px)`,
         height: '100vh',
@@ -582,6 +665,7 @@ const App: React.FC = () => {
         <NavItem title="Danh mục" icon={<Briefcase size={20} />} />
         <NavItem title="Lịch sử" icon={<History size={20} />} />
         <NavItem active={sidebarView === 'ai'} title="AI support" icon={<MessageSquare size={20} />} onClick={() => setSidebarView('ai')} />
+        <NavItem active={sidebarView === 'knowledge'} title="Quản lý kiến thức" icon={<Database size={20} />} onClick={() => setSidebarView('knowledge')} />
 
         <div style={{ marginTop: 'auto' }}>
           <NavItem title="Cài đặt" icon={<Settings size={20} />} />
@@ -623,6 +707,110 @@ const App: React.FC = () => {
           </>
         )}
       </section>
+
+      {sidebarView === 'knowledge' && (
+        <div style={{ ...styles.chatOverlay, width: chatWidth, left: NAV_WIDTH }}>
+          <div
+            style={styles.chatResizeHandle}
+            onMouseDown={(e) => {
+              setIsChatResizing(true);
+              resizeStartXRef.current = e.clientX;
+              resizeStartWidthRef.current = chatWidth;
+            }}
+          />
+          <div style={styles.knowledgeContainer}>
+            <div style={styles.marketHeader}>Quản lý Kiến thức (RAG)</div>
+            
+            <div
+              style={{
+                ...styles.uploadArea,
+                ...(isDragging ? { borderColor: '#10B981', background: 'rgba(16,185,129,0.08)' } : {})
+              }}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+            >
+              <label style={styles.uploadLabel}>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleUploadKnowledge}
+                  style={{ display: 'none' }}
+                  disabled={isUploading}
+                />
+                {isUploading ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
+                    <span>Đang nạp dữ liệu...</span>
+                  </div>
+                ) : isDragging ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                    <Upload size={32} color="#10B981" />
+                    <span style={{ fontSize: '0.9em', color: '#10B981', fontWeight: 600 }}>Thả file vào đây!</span>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                    <Upload size={32} color="#10B981" />
+                    <span style={{ fontSize: '0.9em', color: '#8B949E' }}>Click hoặc kéo thả PDF vào đây</span>
+                  </div>
+                )}
+              </label>
+            </div>
+
+            <div style={styles.fileList}>
+              <div style={{ fontSize: '0.8em', color: '#8B949E', marginBottom: '12px', fontWeight: 600 }}>TÀI LIỆU TRONG HỆ THỐNG</div>
+              {knowledgeFiles.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#484F58' }}>
+                  <FileText size={48} style={{ marginBottom: '10px', opacity: 0.5 }} />
+                  <div>Chưa có tài liệu nào</div>
+                </div>
+              ) : (
+                knowledgeFiles.map(file => (
+                  <div key={file.id} style={styles.fileItem}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                      <FileText size={20} color="#8B949E" style={{ flexShrink: 0 }} />
+                      <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                        <div style={{ fontSize: '0.9em', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {file.filename}
+                        </div>
+                        <div style={{ fontSize: '0.7em', color: '#8B949E' }}>
+                          {new Date(file.created_at * 1000).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '8px' }}>
+                      {file.status === 'completed' && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75em', color: '#10B981', background: 'rgba(16,185,129,0.1)', padding: '3px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                          <CheckCircle2 size={12} /> Đã xong
+                        </span>
+                      )}
+                      {file.status === 'processing' && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75em', color: '#F59E0B', background: 'rgba(245,158,11,0.1)', padding: '3px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                          <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Đang nạp
+                        </span>
+                      )}
+                      {file.status === 'error' && (
+                        <span title={file.error_message} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75em', color: '#EF4444', background: 'rgba(239,68,68,0.1)', padding: '3px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                          <AlertCircle size={12} /> Lỗi
+                        </span>
+                      )}
+                      
+                      <button 
+                        onClick={() => handleDeleteKnowledgeFile(file.id)}
+                        style={styles.deleteBtn}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {sidebarView === 'ai' && (
         <div style={{ ...styles.chatOverlay, width: chatWidth, left: NAV_WIDTH }}>
@@ -858,9 +1046,72 @@ const styles: Record<string, React.CSSProperties> = {
   toggleBtnSell: { background: '#EF4444', color: 'white' },
   inputGroup: { display: 'flex', flexDirection: 'column', gap: '6px' },
   label: { fontSize: '0.7em', color: '#8B949E', textTransform: 'uppercase' },
+  footerBranding: {
+    fontSize: '0.65em',
+    color: '#30363D',
+    marginTop: '20px',
+    letterSpacing: '1px',
+    textTransform: 'uppercase'
+  },
+  knowledgeContainer: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    background: '#0D1117',
+    borderRight: '1px solid #30363D',
+    height: '100%',
+    padding: '20px',
+  },
+  uploadArea: {
+    border: '2px dashed #30363D',
+    borderRadius: '12px',
+    padding: '40px 20px',
+    textAlign: 'center',
+    marginBottom: '24px',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    background: 'rgba(255, 255, 255, 0.02)',
+  },
+  uploadLabel: {
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    width: '100%',
+  },
+  fileList: {
+    flex: 1,
+    overflowY: 'auto',
+  },
+  fileItem: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px',
+    background: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: '8px',
+    marginBottom: '8px',
+    border: '1px solid transparent',
+    transition: 'all 0.2s ease',
+  },
+  deleteBtn: {
+    background: 'transparent',
+    border: 'none',
+    color: '#8B949E',
+    cursor: 'pointer',
+    padding: '6px',
+    borderRadius: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      color: '#EF4444',
+      background: 'rgba(239, 68, 68, 0.1)',
+    }
+  },
   inputBox: { display: 'flex', alignItems: 'center', background: '#0D1117', border: '1px solid #30363D', padding: '10px 12px', borderRadius: '8px' },
   actionBtn: { width: '100%', padding: '14px', borderRadius: '12px', border: 'none', fontSize: '0.95em', fontWeight: 700, cursor: 'pointer', transition: '0.2s' },
-  footerBranding: { marginTop: '15px', fontSize: '0.65em', color: '#8B949E' },
   chatContainer: { display: 'flex', flexDirection: 'column', height: '100%' },
   chatMessages: { flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' },
   message: {
