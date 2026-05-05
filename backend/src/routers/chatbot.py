@@ -1,12 +1,17 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from src.schemas.chat_schema import ChatRequest, ModelSelectRequest, AvailableModel
 from typing import List
+import shutil
+import os
 
 from src.conversation.session_manager import get_session_manager
 from src.utils.llm import get_llm
 from src.utils.app_config import AppConfig
 from src.pipeline.chat_pipeline import get_chat_pipeline
+from src.utils.knowledge_base import get_knowledge_base
+from src.utils.knowledge_manager import get_knowledge_manager
+from src.utils.logger import logger
 
 router = APIRouter(prefix="/api/chat", tags=["chatbot"])
 
@@ -73,3 +78,53 @@ async def get_last_trace():
     pipeline = get_chat_pipeline()
     trace = pipeline.get_last_trace()
     return trace.__dict__ if trace is not None else {}
+
+@router.post("/upload-knowledge")
+async def upload_knowledge(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    
+    temp_dir = os.path.join("data", "temp")
+    os.makedirs(temp_dir, exist_ok=True)
+    file_path = os.path.join(temp_dir, file.filename)
+    
+    # Save file immediately
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    km = get_knowledge_manager()
+    file_id = km.add_file(file.filename)
+
+    def process_indexing(path: str, fid: int):
+        try:
+            kb = get_knowledge_base()
+            kb.ingest_pdf(path)
+            get_knowledge_manager().update_status(fid, "completed")
+        except Exception as e:
+            logger.error(f"Background indexing failed: {e}")
+            get_knowledge_manager().update_status(fid, "error", error_message=str(e))
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    # Run indexing in background
+    background_tasks.add_task(process_indexing, file_path, file_id)
+    
+    return {"message": "Đã bắt đầu nạp tài liệu. Bạn có thể theo dõi trạng thái ở bảng quản lý.", "id": file_id}
+
+@router.get("/knowledge/files")
+async def list_knowledge_files():
+    """List all knowledge files and their processing status"""
+    km = get_knowledge_manager()
+    return km.get_files()
+
+@router.delete("/knowledge/files/{file_id}")
+async def delete_knowledge_file(file_id: int):
+    """Delete a knowledge file from the database and Qdrant"""
+    km = get_knowledge_manager()
+    filename = km.delete_file(file_id)
+    if filename:
+        kb = get_knowledge_base()
+        kb.delete_file_vectors(filename)
+        return {"message": f"File '{filename}' deleted from knowledge base"}
+    raise HTTPException(status_code=404, detail="File not found")

@@ -33,8 +33,24 @@ cache:
   max_entries: 5000
   top_k_scan: 2000
 
+knowledge:
+  enabled: true
+  collection_name: "kafi_knowledge"
+  qdrant_path: "data/qdrant_db"
+  chunk_min: 400
+  chunk_max: 800
+  chunk_overlap: 50
+  top_k_retrieve: 15
+
+reranker:
+  enabled: true
+  huggingface_model: "Qwen/Qwen3-Reranker-0.6B"
+  top_k: 3
+  device: cuda # cuda
+
 startup:
   preload_router: true
   preload_guardrails: true
   preload_embeddings: true
+  preload_reranker: true
   preload_main_llm: true

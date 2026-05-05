@@ -8,6 +8,8 @@ from typing import Dict, Generator, List, Optional
 from src.agents.financial_agent import get_financial_agent
 from src.utils.app_config import AppConfig
 from src.utils.embeddings import get_embedder
+from src.utils.reranker import get_reranker
+from src.utils.knowledge_base import get_knowledge_base
 from src.utils.guardrails import SafetyDecision, get_guardrails
 from src.utils.logger import logger
 from src.utils.router import Routes, get_router
@@ -34,6 +36,8 @@ class ChatPipeline:
         self.guardrails = get_guardrails()
         self.router = get_router()
         self.embedder = get_embedder()
+        self.reranker = get_reranker()
+        self.kb = get_knowledge_base()
         self.cache = get_cache()
 
     def get_last_trace(self) -> Optional[PipelineTrace]:
@@ -56,6 +60,11 @@ class ChatPipeline:
                 self.embedder.ensure_loaded()
             except Exception as e:
                 logger.warning(f"[startup] embeddings preload failed: {e}")
+        if bool(self._startup_cfg.get("preload_reranker", True)):
+            try:
+                self.reranker.ensure_loaded()
+            except Exception as e:
+                logger.warning(f"[startup] reranker preload failed: {e}")
 
     def _stream_with_periodic_output_guardrails(
         self,
@@ -180,7 +189,23 @@ class ChatPipeline:
         route, router_raw = self.router.classify(user_text)
         logger.info(f"[router] route={route.value} raw={router_raw.strip()[:120]}")
 
-        # (4) Call tools/models (RAG not wired yet -> all routes go to LLM for now)
+        # (4) Call tools/models
+        # If route is KNOWLEDGE, retrieve context first
+        contexts = []
+        if route == Routes.KNOWLEDGE:
+            logger.info(f"[pipeline] KNOWLEDGE route detected, retrieving context...")
+            contexts = self.kb.retrieve(user_text)
+            if contexts:
+                logger.info(f"[pipeline] retrieved {len(contexts)} contexts from knowledge base")
+                # Augment prompt with context
+                context_str = "\n\n".join([f"Tài liệu {i+1}:\n{c}" for i, c in enumerate(contexts)])
+                user_text = (
+                    "Dựa vào thông tin dưới đây để trả lời câu hỏi của tôi.\n"
+                    "Nếu thông tin không có trong tài liệu, hãy nói rằng bạn không biết.\n\n"
+                    f"--- TÀI LIỆU ---\n{context_str}\n\n"
+                    f"--- CÂU HỎI ---\n{user_text}"
+                )
+
         agent = get_financial_agent()
         gen = agent.process_chat(user_text, history)
         response_text = yield from self._stream_with_periodic_output_guardrails(chunk_iter=gen)

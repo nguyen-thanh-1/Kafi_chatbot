@@ -56,15 +56,20 @@ class EmbeddingManager:
             )
             return True
 
-    def embed(self, texts: List[str]) -> EmbeddingResult:
+    def embed(self, texts: List[str], batch_size: Optional[int] = None) -> EmbeddingResult:
         if not self.ensure_loaded():
             raise RuntimeError("Embedding model is not available")
 
-        # SentenceTransformers returns list/ndarray float32
+        # Optimal batch sizes: GPU=128, CPU=32
+        if batch_size is None:
+            batch_size = 128 if 'cuda' in str(self._model.device) else 32
+
         vecs = self._model.encode(  # type: ignore[union-attr]
             texts,
+            batch_size=batch_size,
             normalize_embeddings=self.normalize,
-            show_progress_bar=False,
+            convert_to_numpy=True,
+            show_progress_bar=len(texts) > 50,
         )
         vecs = np.asarray(vecs, dtype=np.float32)
         if vecs.ndim == 1:
