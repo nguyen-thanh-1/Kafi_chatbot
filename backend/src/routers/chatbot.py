@@ -48,10 +48,6 @@ async def chat_endpoint(request: ChatRequest):
         # Fallback to manual history from request
         history = [{"role": msg.role, "content": msg.content} for msg in request.history]
 
-    # Add the current user question to history (if using a session)
-    if request.session_id:
-        session_manager.add_message(request.session_id, "user", request.message)
-    
     def generate():
         full_response = ""
         try:
@@ -60,6 +56,7 @@ async def chat_endpoint(request: ChatRequest):
                 yield chunk
 
             if request.session_id:
+                session_manager.add_message(request.session_id, "user", request.message)
                 session_manager.add_message(request.session_id, "assistant", full_response)
         except Exception as e:
             yield f"\n[Error from Pipeline] {str(e)}"

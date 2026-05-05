@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from dataclasses import dataclass
 from threading import Lock
@@ -90,59 +92,18 @@ class ChatPipeline:
 
         return response_text
 
+    def _history_context_hash(self, history: List[Dict[str, str]]) -> str:
+        context = [
+            {"role": str(message.get("role", "")), "content": str(message.get("content", ""))}
+            for message in history
+        ]
+        payload = json.dumps(context, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8", errors="ignore")).hexdigest()
+
     def process(self, user_text: str, history: List[Dict[str, str]], session_id: Optional[str] = None) -> Generator[str, None, None]:
-        # (1) Cache check (semantic) - first
-        query_vec = None
-        cache_hit: Optional[CacheHit] = None
-        if self.cache.enabled:
-            try:
-                query_vec = self.embedder.embed([user_text]).vectors[0]
-                cache_hit = self.cache.lookup(user_text, query_vec, session_id=session_id)
-            except Exception as e:
-                logger.warning(f"[cache] embedding/lookup failed: {e}")
+        context_hash = self._history_context_hash(history)
 
-        if cache_hit is not None:
-            logger.info(
-                f"[cache] HIT similarity={cache_hit.similarity:.3f} route={cache_hit.route} age_s={int(time.time() - cache_hit.created_at)}"
-            )
-
-            # Cache-hit path: user prompt + cached reference answer -> LLM
-            agent = get_financial_agent()
-            augmented_prompt = (
-                "[CACHE_HIT]\n"
-                "Bạn đã từng trả lời câu hỏi tương tự trước đây.\n"
-                "Dưới đây là câu trả lời tham chiếu (không cần trích nguyên văn, hãy diễn đạt tự nhiên hơn):\n"
-                f"{cache_hit.response}\n\n"
-                f"Câu hỏi của người dùng: {user_text}"
-            )
-            
-            gen = agent.process_chat(augmented_prompt, history)
-            response_text = yield from self._stream_with_periodic_output_guardrails(chunk_iter=gen)
-
-            decision_out, raw_out = self.guardrails.check(response_text)
-            logger.info(f"[guardrails] output={decision_out.value} raw={raw_out.strip()[:120]}")
-            if decision_out == SafetyDecision.UNSAFE:
-                tail = (
-                    "\n\n[Thông báo] Mình không thể tiếp tục vì nội dung có thể không an toàn. "
-                    "Bạn có thể cho mình biết mục tiêu hợp lệ/an toàn để mình hỗ trợ theo cách khác."
-                )
-                yield tail
-                response_text += tail
-
-            trace = PipelineTrace(
-                input_safety="SKIPPED_CACHE_HIT",
-                cache_hit=True,
-                cache_similarity=float(cache_hit.similarity),
-                route=str(cache_hit.route),
-                output_safety=decision_out.value,
-            )
-            with self._lock:
-                self._last_trace = trace
-            return
-
-        logger.info("[cache] MISS")
-
-        # (2) Input guardrails (only on cache miss)
+        # (1) Input guardrails
         decision_in, raw_in = self.guardrails.check(user_text)
         logger.info(f"[guardrails] input={decision_in.value} raw={raw_in.strip()[:120]}")
         if decision_in == SafetyDecision.UNSAFE:
@@ -176,6 +137,62 @@ class ChatPipeline:
                 self._last_trace = trace
             return
 
+        # (2) Cache check (semantic)
+        query_vec = None
+        cache_hit: Optional[CacheHit] = None
+        if self.cache.enabled:
+            try:
+                query_vec = self.embedder.embed([user_text]).vectors[0]
+                cache_hit = self.cache.lookup(
+                    user_text,
+                    query_vec,
+                    session_id=session_id,
+                    context_hash=context_hash,
+                )
+            except Exception as e:
+                logger.warning(f"[cache] embedding/lookup failed: {e}")
+
+        if cache_hit is not None:
+            logger.info(
+                f"[cache] HIT similarity={cache_hit.similarity:.3f} route={cache_hit.route} age_s={int(time.time() - cache_hit.created_at)}"
+            )
+
+            # Cache-hit path: user prompt + cached reference answer -> LLM
+            agent = get_financial_agent()
+            augmented_prompt = (
+                "[CACHE_HIT]\n"
+                "Bạn đã từng trả lời câu hỏi tương tự trước đây.\n"
+                "Dưới đây là câu trả lời tham chiếu (không cần trích nguyên văn, hãy diễn đạt tự nhiên hơn):\n"
+                f"{cache_hit.response}\n\n"
+                f"Câu hỏi của người dùng: {user_text}"
+            )
+            
+            gen = agent.process_chat(augmented_prompt, history)
+            response_text = yield from self._stream_with_periodic_output_guardrails(chunk_iter=gen)
+
+            decision_out, raw_out = self.guardrails.check(response_text)
+            logger.info(f"[guardrails] output={decision_out.value} raw={raw_out.strip()[:120]}")
+            if decision_out == SafetyDecision.UNSAFE:
+                tail = (
+                    "\n\n[Thông báo] Mình không thể tiếp tục vì nội dung có thể không an toàn. "
+                    "Bạn có thể cho mình biết mục tiêu hợp lệ/an toàn để mình hỗ trợ theo cách khác."
+                )
+                yield tail
+                response_text += tail
+
+            trace = PipelineTrace(
+                input_safety=decision_in.value,
+                cache_hit=True,
+                cache_similarity=float(cache_hit.similarity),
+                route=str(cache_hit.route),
+                output_safety=decision_out.value,
+            )
+            with self._lock:
+                self._last_trace = trace
+            return
+
+        logger.info("[cache] MISS")
+
         # (3) Router
         route, router_raw = self.router.classify(user_text)
         logger.info(f"[router] route={route.value} raw={router_raw.strip()[:120]}")
@@ -203,7 +220,11 @@ class ChatPipeline:
                     query_vec = self.embedder.embed([user_text]).vectors[0]
 
                 response_vec = self.embedder.embed([response_text]).vectors[0]
-                dup = self.cache.has_similar_response(response_vec, session_id=session_id)
+                dup = self.cache.has_similar_response(
+                    response_vec,
+                    session_id=session_id,
+                    context_hash=context_hash,
+                )
                 if dup is not None:
                     logger.info(f"[cache] DUPLICATE_RESPONSE similarity={dup[0]:.3f} (skip store)")
                 else:
@@ -213,6 +234,7 @@ class ChatPipeline:
                         route.value,
                         response_text,
                         session_id=session_id,
+                        context_hash=context_hash,
                         response_vec=response_vec,
                     )
                     logger.info("[cache] STORED")

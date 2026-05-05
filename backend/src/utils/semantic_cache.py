@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -80,6 +79,7 @@ class SemanticCache:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     created_at REAL NOT NULL,
                     session_id TEXT,
+                    context_hash TEXT,
                     query_text TEXT NOT NULL,
                     query_hash TEXT NOT NULL,
                     route TEXT NOT NULL,
@@ -91,24 +91,33 @@ class SemanticCache:
                 )
                 """
             )
-            con.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_hash ON semantic_cache(query_hash);")
-            con.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_session ON semantic_cache(session_id);")
-            con.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_created ON semantic_cache(created_at);")
-
             # Migration for older DBs
             cols = [r[1] for r in con.execute("PRAGMA table_info(semantic_cache);").fetchall()]
             if "session_id" not in cols:
                 con.execute("ALTER TABLE semantic_cache ADD COLUMN session_id TEXT;")
+            if "context_hash" not in cols:
+                con.execute("ALTER TABLE semantic_cache ADD COLUMN context_hash TEXT;")
             if "response_embedding_dim" not in cols:
                 con.execute("ALTER TABLE semantic_cache ADD COLUMN response_embedding_dim INTEGER;")
             if "response_embedding" not in cols:
                 con.execute("ALTER TABLE semantic_cache ADD COLUMN response_embedding BLOB;")
+
+            con.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_hash ON semantic_cache(query_hash);")
+            con.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_session ON semantic_cache(session_id);")
+            con.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_context ON semantic_cache(context_hash);")
+            con.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_created ON semantic_cache(created_at);")
             con.commit()
         finally:
             if self.db_path != ":memory:":
                 con.close()
 
-    def lookup(self, query_text: str, query_vec: np.ndarray, session_id: Optional[str] = None) -> Optional[CacheHit]:
+    def lookup(
+        self,
+        query_text: str,
+        query_vec: np.ndarray,
+        session_id: Optional[str] = None,
+        context_hash: Optional[str] = None,
+    ) -> Optional[CacheHit]:
         if not self.enabled:
             return None
 
@@ -133,6 +142,9 @@ class SemanticCache:
                 if session_id:
                     sql += " AND session_id = ?"
                     params.append(session_id)
+                if context_hash is not None:
+                    sql += " AND context_hash = ?"
+                    params.append(context_hash)
                 
                 sql += " ORDER BY id DESC LIMIT 1"
                 row = con.execute(sql, tuple(params)).fetchone()
@@ -150,9 +162,15 @@ class SemanticCache:
                     FROM semantic_cache
                 """
                 params = []
+                where = []
                 if session_id:
-                    sql += " WHERE session_id = ?"
+                    where.append("session_id = ?")
                     params.append(session_id)
+                if context_hash is not None:
+                    where.append("context_hash = ?")
+                    params.append(context_hash)
+                if where:
+                    sql += " WHERE " + " AND ".join(where)
                 
                 sql += " ORDER BY id DESC LIMIT ?"
                 params.append(self.top_k_scan)
@@ -188,7 +206,12 @@ class SemanticCache:
                 return best
             return None
 
-    def has_similar_response(self, response_vec: np.ndarray, session_id: Optional[str] = None) -> Optional[Tuple[float, str]]:
+    def has_similar_response(
+        self,
+        response_vec: np.ndarray,
+        session_id: Optional[str] = None,
+        context_hash: Optional[str] = None,
+    ) -> Optional[Tuple[float, str]]:
         if not self.enabled:
             return None
 
@@ -209,6 +232,9 @@ class SemanticCache:
                 if session_id:
                     sql += " AND session_id = ?"
                     params.append(session_id)
+                if context_hash is not None:
+                    sql += " AND context_hash = ?"
+                    params.append(context_hash)
                 
                 sql += " ORDER BY id DESC LIMIT ?"
                 params.append(self.top_k_scan)
@@ -247,6 +273,7 @@ class SemanticCache:
         response_text: str,
         *,
         session_id: Optional[str] = None,
+        context_hash: Optional[str] = None,
         response_vec: Optional[np.ndarray] = None,
     ) -> None:
         if not self.enabled:
@@ -276,16 +303,17 @@ class SemanticCache:
                     con.execute(
                         """
                         INSERT INTO semantic_cache (
-                            created_at, session_id, query_text, query_hash, route,
+                            created_at, session_id, context_hash, query_text, query_hash, route,
                             embedding_dim, query_embedding,
                             response_embedding_dim, response_embedding,
                             response_text
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             float(created_at),
                             session_id,
+                            context_hash,
                             str(query_text),
                             str(qh),
                             str(route),
